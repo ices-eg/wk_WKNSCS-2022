@@ -1,0 +1,3250 @@
+---
+title: "survey indices calculation delta-GAM for BTS and IBTS-Q3"
+author: "Chun Chen"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: word_document
+params:
+  work_year: 2021
+  last_data_year: 2020
+  mydatapath: "C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/"
+  BTS_filaname: "Exchange Data_2021-11-15 11_05_00.zip"
+  IBTSQ3_filaname: "Exchange Data_2021-11-15 11_21_02.zip"
+self_contained: false
+header-includes:
+  - \usepackage{lscape}
+  - \newcommand{\blandscape}{\begin{landscape}}
+  - \newcommand{\elandscape}{\end{landscape}}
+  - \usepackage{longtable}
+  - \usepackage{floatrow}
+  - \usepackage{textcomp}
+  - \usepackage[section]{placeins}
+  - \floatsetup[table]{capposition=top}
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r preparation, echo=F, results="hide", message=FALSE,warning=FALSE, comment="", eval=TRUE, prompt=FALSE, fig.show="hide"}
+#- preparation
+#rm(list=(ls()))
+library(surveyIndex)
+library(maps)
+#library(mapdata)
+library(lattice)
+library(RColorBrewer)
+library(xtable)
+library(ggplot2)
+library(mgcv)
+library(ggpubr)
+library(RColorBrewer)
+library(colorRamps)
+library(reshape2)
+library(ggalluvial)
+#display.brewer.all()
+colset      <- brewer.pal(9, "Greens")
+colset1      <- brewer.pal(9, "Set3")
+mycolor      <- rev(heat.colors(12, alpha=1))
+#colset1      <- colset1[seq(9,1)]
+#colset1      <- blue2red(9)
+colset      <- brewer.pal(9, "Set1")
+#hist(discoveries,col = colset)
+colset      <- c("#000000", colset)
+
+## set path
+#setwd("D:/UserData/Work/0_2019_WGNSSK/16_autumn_update_2019/1_surveys/")
+#mypath         <- getwd()
+#plot_path      <- paste(mypath, "/plot_BTS_Q3/", sep="")
+
+## define working year
+#work_year      <- "2019"
+#last_data_year <- 2019
+
+## define datras file name
+#BTS_filaname  <- "Exchange Data_2019-10-01 15_48_42.zip"
+
+## BTS data name
+#BTSname       <- paste("plaiceBTSQ3_autumn_update_", last_data_year, sep="")
+
+## get params
+work_year      <- params$work_year
+last_data_year <- params$last_data_year
+mydatapath         <- params$mydatapath
+BTS_filaname       <- params$BTS_filaname
+IBTSQ3_filaname    <- params$IBTSQ3_filaname
+my_result_path <- "C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/"
+
+## ! check submission status, any update
+## https://datras.ices.dk/Data_products/Submission_Status.aspx
+
+
+## set path
+setwd(my_result_path)
+
+## load functions: together in data folder
+source(paste(mydatapath, "functions_survey_indices.R", sep=""))
+
+agesQ3         <- 0:10
+
+
+## run under r 4.0.2, 
+packageVersion("surveyIndex")
+
+## version 1.4
+## before I used version X
+## since WGNSSK2020 I used version 1.4
+## since WKNSCS 2021 move to Index version 1.9
+packageVersion("DATRAS")  ## 1.1
+```
+
+# 0. Notes from Ingeborg and Loes
+
+Last year (2018) we had surprisingly high indices for 0-group plaice further offshore than "normal" for plaice. Note that this year class is also relatively strong at age 1, in both the BTS-isis as well as the BTS-tridens series. Not as strong as the 1996 year class at age 1 though. 
+
+```{r , echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=6, fig.width=10, fig.align="center", fig.cap="", fig.pos="htb!"}
+## check surveyIndex package
+if (packageVersion("surveyIndex")>1.4) {
+  stop("New version package, some new functions, getSurveyIdx function also changed")
+}
+Casper said that the new version does have some new features that could be interesting, 
+```
+
+
+# 1. extract BTS
+
+```{r 00_extract_save_data_BTS, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=6, fig.width=10, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############################################################
+##############   BTS-Q3,           ###########################
+##############################################################
+cmSize         <- 1
+spectrumMax    <- 70;
+agesQ3         <- 0:10
+years          <- 1991:last_data_year 
+genus          <- "Pleuronectes"
+bfamily        <- "platessa"
+
+## define survey year
+survey_year      <- 1996:last_data_year
+  
+## exclude year for German data
+#GER_exclude_year <- 1995:2001
+
+
+## load BTS-Q3 data
+if(!file.exists(paste(mydatapath, "Data/plaiceBTSQ3_", work_year, ".RData", sep=""))) {
+  dAll <- readExchange(paste(mydatapath, "Data/BTSQ3/", BTS_filaname, sep=""),strict=FALSE)
+  
+  dAll <-addSpatialData(dAll,"./shapefiles/ICES_areas.shp")
+  
+  ## select plaice, year in years, quarter=3, valid hauls
+  dAll <-subset(dAll,Species==paste(genus,bfamily), Year %in% years, Quarter==3, HaulVal=="V", StdSpecRecCode==1)
+  
+  save(dAll,file=paste(mydatapath, "Data/plaiceBTSQ3_", work_year, ".RData", sep=""))
+} else load(paste(mydatapath, "Data/plaiceBTSQ3_", work_year, ".RData", sep=""))
+
+```
+
+```{r 01_QA_BTS, echo=F, results="asis", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=6, fig.width=10, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+## check if data are correct
+table(dAll[[3]]$Species)
+table(dAll[[1]]$Survey)
+table(dAll[[1]]$Quarter)
+table(dAll[[1]]$Year)
+table(dAll[[1]]$Country)
+table(dAll[[1]]$Country, dAll[[1]]$Year) ## age samples
+table(dAll[[2]]$Country, dAll[[2]]$Year) ## length samples
+table(dAll[[2]]$Gear, dAll[[2]]$Year,dAll[[2]]$Country)
+table(dAll[[1]]$Age, dAll[[1]]$Year)
+table(dAll[[2]]$Month)
+#table( dAll[[1]]$Country, dAll[[1]]$Gear, dAll[[1]]$Year)
+summary(dAll$Depth)
+
+
+```
+
+```{r 02_extra_processing_BTS, echo=T, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=6, fig.width=10, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############################################################
+##############   BTS-Q3   ####################################
+##############################################################
+
+#mysurvey       <- "BTS-Q3"
+
+## in 2020, there was a variable name change in the CA file. The variable "NoAtALK" is now named "NoAtLngt", which could affect your code.
+
+#dAll[["CA"]]$NoAtALK <- dAll[["CA"]]$NoAtLngt ## this does not need to be done since 2021
+
+
+dAll <- addSpectrum(dAll,cm.breaks=seq(0,spectrumMax,by=cmSize))
+
+
+## impute missing depths
+summary(dAll$Depth)
+dmodel <- gam(log(Depth) ~ s(lon,lat,k=200),data=dAll[[2]])
+sel    <- subset(dAll,is.na(Depth))
+sel$Depth <- 0; ## Guard against NA-error
+dAll$Depth[is.na(dAll$Depth)] <- exp(predict(dmodel,newdata=sel[[2]]))
+dmodel <- NULL
+sel    <- NULL
+gc()
+
+## extra processing 
+## exclude german-BT7 in year 1995-2001--> not done anymore!
+table(dAll[[1]]$Gear, dAll[[1]]$Country)
+table(dAll[[1]]$Gear, dAll[[1]]$Year)
+table(dAll[[1]]$Country, dAll[[1]]$Year)
+table(dAll[[2]]$Month, dAll[[2]]$Year)
+table(dAll[[2]]$Month, dAll[[2]]$ICESAREA)
+#dAll   <- subset(dAll, !(Year %in% as.character(GER_exclude_year) & Gear=="BT7"))
+
+## select area, month>6, month<10
+## some samples in october, but they are in area 7
+## note: maybe you need to use ICES_area instead of ICESAREA, depends on the shapefile
+table(dAll[[2]]$ICESAREA, dAll[[2]]$Month)
+# this is the code to use: the correct shapefile with IIIa20 identified
+dQ3  <- subset(dAll,ICESAREA %in% as.character(c("IIIa20","IVa","IVb","IVc")), Month>6, Month<10)
+table(dQ3[[2]]$ICESAREA)
+#this is the code if we use the old shapefile
+#dQ3 <- subset(dAll,ICES_area %in% as.character(c("IIIa","IVa","IVb","IVc")), Month>6, Month<10)
+
+## Calculate total biomass by haul and add to HH-records
+dQ3      <- addWeightByHaul(dQ3)
+
+## Gear subsetting: exclude bel-2015-2016-BT4S --> not done anymore!
+#dQ3      <- subset(dQ3,!Gear %in% c("BT4S"))
+
+## Year subsetting
+dQ3      <- subset(dQ3,Year %in% survey_year)
+
+## Area subsetting: for both BTS and IBTS: we still show them in plots
+#The precision of survey indices is likely to drop if large areas with nearly zero densities are included.
+#Therefore the North-Eastern part of the North Sea has been excluded from the index calculations.
+#This was done for both Q1 and Q3 data.
+dQ3      <- subset(dQ3,!(lon>-0.7 & lon<5 & lat>58.24 & lat<62))
+
+## check how many hauls are in north eastern area
+aa <- subset(dQ3,(lon>-0.7 & lon<5 & lat>58.24 & lat<62))
+bb <- aa[[2]]
+nrow(bb)
+table(bb$Year, bb$Country)
+
+
+## select subset of BTS 
+mydQ     <-  dQ3
+
+## rename data into BTS, then need to be combined with IBTS to make ALK
+mydQ.BTS <- mydQ
+
+save(mydQ.BTS, file=paste(mydatapath, "Data/BTS_",work_year, "_processed.RData", sep=""))
+
+## check age/length sample avaiability
+table(mydQ.BTS[[1]]$Country, mydQ.BTS[[1]]$Year) ## age samples
+table(mydQ.BTS[[2]]$Country, mydQ.BTS[[2]]$Year) ## length samples
+table(mydQ.BTS[[2]]$Gear, mydQ.BTS[[2]]$Year,mydQ.BTS[[2]]$Country)
+
+
+## check number of hauls in CA and HH by country
+table(mydQ.BTS[[1]]$Country, mydQ.BTS[[1]]$Year) ## age samples, number of rows
+CA <- mydQ.BTS[[1]]
+temp1 <- aggregate(haul.id ~ Year + Country, FUN=myfun <- function(x){length(unique(x))}, data=CA)
+temp1
+names(temp1)[3] <- "NO_age"
+table(mydQ.BTS[[2]]$Country, mydQ.BTS[[2]]$Year) ## length samples
+HH <- mydQ.BTS[[2]]
+temp2 <- aggregate(haul.id ~ Year + Country, FUN=myfun <- function(x){length(unique(x))}, data=HH)
+temp2
+names(temp2)[3] <- "NO_haul"
+## merge
+temp2 <- merge(temp1, temp2, by=c("Year", "Country"), all=T)
+
+## add missing years in DE
+temp2 <- rbind(temp2, data.frame(Year=c(1996,2006), 
+                                 Country="DE", NO_haul=NA, NO_age=NA))
+write.csv(temp2,paste(my_result_path, "01_summary_sample_size_BTS.csv", sep=""), row.names = F)
+
+## plot sample size
+f1 <- ggplot(temp2, aes(x=Year, y=NO_haul, group=Country, color=Country)) +
+  #geom_path(lwd = 1.5) +
+  geom_line( size=2) +
+  geom_line(data=temp2, aes(x=Year, y=NO_age, group=Country, color=Country),linetype = "longdash", size=2) +
+  #geom_vline(xintercept = "1996", color="red")+
+  #scale_color_brewer(palette="Spectral")  
+  xlab("")+ ylab("number of hauls") +
+  #scale_x_continuous(name="Length (mm)", breaks=seq(280, 900, 100), labels=seq(280, 900, 100),
+   #                  limits=c(280,900))+
+  ggtitle("BTS Sample size ") +
+  theme_bw()+
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "right", 
+        legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=15, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))
+
+print(f1)
+
+```
+
+# 2. extract IBTS-Q3
+
+```{r 00_extract_save_data_IBTS_Q3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=6, fig.width=10, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############################################################
+##############   IBTS-Q3   ###################################
+##############################################################
+## Species specific parameters:
+cmSize         <- 1
+spectrumMax    <- 70
+agesQ3         <- 0:10
+years          <- 1991:last_data_year 
+genus          <- "Pleuronectes"
+bfamily        <- "platessa"
+#mysurvey       <- "IBTS-Q3"
+
+## define survey year
+survey_year      <- 1996:last_data_year
+
+## load IBTS-Q3 data
+rm(dAll)
+if(!file.exists(paste(mydatapath, "Data/plaiceIBTSQ3_", work_year, ".RData", sep=""))){
+  dAll <- readExchange(paste(mydatapath, "Data/IBTSQ3/", IBTSQ3_filaname, sep=""),strict=FALSE)
+  
+  dAll <-addSpatialData(dAll,"./shapefiles/ICES_areas.shp")
+  
+  ## select plaice, year in years, quarter=3, valid hauls
+  dAll <-subset(dAll,Species==paste(genus,bfamily),Year %in% years,Quarter==3,HaulVal=="V",StdSpecRecCode==1)
+  
+  save(dAll,file=paste(mydatapath, "Data/plaiceIBTSQ3_", work_year, ".RData", sep=""))
+} else load(paste(mydatapath, "Data/plaiceIBTSQ3_", work_year, ".RData", sep=""))
+
+```
+
+```{r 01_QA_IBTS_Q3, echo=F, results="asis", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=6, fig.width=10, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+## there are NA ages in CA files for IBTS
+## these are likely age sampled intended for roundfish, but not being read for plaice
+## we keep these data in, they will not be used in ALK
+table(dAll[[1]]$Year[is.na(dAll[[1]]$Age)])
+table(dAll[[1]]$Country[is.na(dAll[[1]]$Age)])
+
+## check if data are correct
+table(dAll[[3]]$Species)
+table(dAll[[1]]$Survey)
+table(dAll[[1]]$Quarter)
+table(dAll[[1]]$Year)
+table(dAll[[1]]$Country)
+table(dAll[[1]]$Country, dAll[[1]]$Year)
+table(dAll[[1]]$Gear)
+table(dAll[[1]]$Gear, dAll[[1]]$Year)
+#table(dAll[[1]]$Age, dAll[[1]]$Year)
+table(dAll[[2]]$Month)
+table(dAll[[2]]$Month, dAll[[2]]$Year)
+#table( dAll[[1]]$Country, dAll[[1]]$Gear, dAll[[1]]$Year)
+summary(dAll$Depth)
+## 1992-1997 there are some length samples with ABD gear type
+table(dAll[[3]]$Gear, dAll[[3]]$Year)
+table(dAll[[1]]$Gear, dAll[[1]]$Year)
+
+```
+
+```{r 02_extra_processing_IBTS_Q3, echo=T, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=6, fig.width=10, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############################################################
+##############   IBTS-Q3   ####################################
+##############################################################
+
+
+## in 2020, there was a variable name change in the CA file. The variable "NoAtALK" is now named "NoAtLngt", which could affect your code.
+
+#dAll[["CA"]]$NoAtALK <- dAll[["CA"]]$NoAtLngt 
+
+dAll <- addSpectrum(dAll,cm.breaks=seq(0,spectrumMax,by=cmSize))
+
+
+## impute missing depths
+summary(dAll$Depth)
+dmodel <- gam(log(Depth) ~ s(lon,lat,k=200),data=dAll[[2]])
+sel    <- subset(dAll,is.na(Depth))
+sel$Depth <- 0; ## Guard against NA-error
+dAll$Depth[is.na(dAll$Depth)] <- exp(predict(dmodel,newdata=sel[[2]]))
+dmodel <- NULL
+sel    <- NULL
+gc()
+
+## select area, month>6, month<10
+## note: maybe you need to use ICES_area instead of ICESAREA, depends on the shapefile
+table(dAll[[2]]$ICESAREA)
+# this is the code to use: the correct shapefile with IIIa20 identified
+dQ3  <- subset(dAll,ICESAREA %in% as.character(c("IIIa20","IVa","IVb","IVc")), Month>6, Month<10)
+table(dQ3[[2]]$ICESAREA)
+#this is the code if we use the old shapefile
+#dQ3 <- subset(dAll,ICES_area %in% as.character(c("IIIa","IVa","IVb","IVc")), Month>6, Month<10)
+
+## Calculate total biomass by haul and add to HH-records
+dQ3      <- addWeightByHaul(dQ3)
+
+
+## Year subsetting 
+dQ3      <- subset(dQ3,Year %in% survey_year)
+
+## exclude singly year data in FR and NL 
+dQ3      <- subset(dQ3,!( Country %in% c("NL", "FR")))
+
+## Area subsetting: for both BTS and IBTS: 
+#The precision of survey indices is likely to drop if large areas with nearly zero densities are included.
+#Therefore the North-western part of the North Sea has been excluded from the index calculations.
+#This was done for both Q1 and Q3 data.
+dQ3      <- subset(dQ3,!(lon>-0.7 & lon<5 & lat>58.24 & lat<62))
+
+## check how many hauls are in north eastern area
+aa <- subset(dQ3,(lon>-0.7 & lon<5 & lat>58.24 & lat<62))
+bb <- aa[[2]]
+nrow(bb)
+table(bb$Year, bb$Country)
+
+## select subset of IBTS 
+mydQ     <-  dQ3
+
+## make dAll, to estimate alk
+mydQ.IBTSQ3 <- mydQ
+
+save(mydQ.IBTSQ3, file=paste(mydatapath,"Data/IBTS_Q3_",work_year, "_processed_exclude_NEarea.RData", sep=""))
+
+## check age/length sample avaiability
+table(mydQ.IBTSQ3[[1]]$Country, mydQ.IBTSQ3[[1]]$Year) ## age samples
+table(mydQ.IBTSQ3[[2]]$Country, mydQ.IBTSQ3[[2]]$Year) ## length samples
+table(mydQ.IBTSQ3[[2]]$Gear, mydQ.IBTSQ3[[2]]$Year, mydQ.IBTSQ3[[2]]$Country)
+
+## check number of hauls in CA and HH by country
+table(mydQ.IBTSQ3[[1]]$Country, mydQ.IBTSQ3[[1]]$Year) ## age samples, number of rows
+CA <- mydQ.IBTSQ3[[1]]
+temp1 <- aggregate(haul.id ~ Year + Country, FUN=myfun <- function(x){length(unique(x))}, data=CA)
+temp1
+names(temp1)[3] <- "NO_age"
+table(mydQ.IBTSQ3[[2]]$Country, mydQ.IBTSQ3[[2]]$Year) ## length samples
+HH <- mydQ.IBTSQ3[[2]]
+temp2 <- aggregate(haul.id ~ Year + Country, FUN=myfun <- function(x){length(unique(x))}, data=HH)
+temp2
+names(temp2)[3] <- "NO_haul"
+## merge
+temp2 <- merge(temp1, temp2, by=c("Year", "Country"), all=T)
+
+
+write.csv(temp2,paste(my_result_path, "01_summary_sample_size_IBTSQ3.csv", sep=""), row.names = F)
+
+## plot sample size
+f1 <- ggplot(temp2, aes(x=Year, y=NO_haul, group=Country, color=Country)) +
+  #geom_path(lwd = 1.5) +
+  geom_line( size=2) +
+  geom_line(data=temp2, aes(x=Year, y=NO_age, group=Country, color=Country),linetype = "longdash", size=2) +
+  #geom_vline(xintercept = "1996", color="red")+
+  #scale_color_brewer(palette="Spectral")  
+  xlab("")+ ylab("number of hauls") +
+  #scale_x_continuous(name="Length (mm)", breaks=seq(280, 900, 100), labels=seq(280, 900, 100),
+   #                  limits=c(280,900))+
+  ggtitle("IBTSQ3 Sample size ") +
+  theme_bw()+
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "right", 
+        legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=15, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))
+
+print(f1)
+
+table(mydQ.IBTSQ3[[3]]$Gear, mydQ.IBTSQ3[[3]]$Year)
+table(mydQ.IBTSQ3[[1]]$Gear, mydQ.IBTSQ3[[1]]$Year) ## there are 190 length records collected from a different gear ABD, but not in age samples
+
+load(file=paste(mydatapath, "Data/BTS_",work_year, "_processed.RData", sep=""))
+load(file=paste(mydatapath, "Data/IBTS_Q3_",work_year, "_processed_exclude_NEarea.RData", sep=""))
+
+## combine BTS and IBTSQ3
+dAll      <- c(mydQ.BTS,mydQ.IBTSQ3)
+
+
+
+save(dAll,mydQ.BTS,mydQ.IBTSQ3, file=paste(mydatapath, "Data/BTS_IBTS_Q3_",work_year, "_processed_exclude_NEarea.RData", sep=""))
+
+
+
+
+```
+
+# 3. Data extra processing and model description
+
+## 3.1 Data extra processing: BTS and IBTS-Q3
+
+* impute missing depth
+
+* German data 1995-2001 (gear BT7) were excluded. The reason is because before 2002 the data were not benchmarked. They were uploaded after the benchmark. The decision was that these new data should go through a benchmark process first before they are used.
+
+* The Belgium data was processed as since benchmark: exclude 2015-2016 BTS4 gear, due to a different gear type. This gear was later proved to be the same. However, new actions will be considered after new benchmark. (There is no difference between the gear used in 2015-2016 and the other years. The reason why we reported it as BTS4S is because the net was towed from the side because it was on a commercial vessel and there was no option to tow from the aft. But apart from that, the net that was used was exactly the same, including the warp length and speed of the vessel during towing.)
+
+* select area "IIIa20","IVa","IVb","IVc", month >6, month <10
+
+* The precision of survey indices is likely to drop if large areas with nearly zero densities are included. Therefore the North-Eastern part of the North Sea has been excluded from the index calculations. This was done for both Q1 and Q3 data. For IBTS, this means exclusion of all norwagain samples
+
+* Indices are generated for 1996-data_year; age 0-10
+
+* Some major deviation from the previous used index (in WGNSSK 2017) especially for 1996. Dutch data were re-uploaded in 2018 for that year. However, I am not sure that this is the reason.
+
+## 3.2. Data extra processing: IBTS-Q1
+
+*	Indices are generated for 2007-data_year; age 1-8
+*	Area IIIa20 and IV, month<4, within a defined area
+*	No extra exclusion
+*	No gear covariates in the model, only one type of gear so far “GOV” in IBTS survey
+*	Since 2018, Scotland joined
+
+## 3.3. Data extra processing: SNS and DFS
+
+Dutch German & Belgian D(Y)FS data to calculate international inshore indices, provided by Loes
+
+## 3.4 Indices extraction process: BTSQ3 and IBTSQ3
+
+The script for BTSQ3 and IBTSQ3 follows the following steps:
+
+1.   Read both BTSQ3 and IBTSQ3 data and combine them;
+
+2.   addSpectrum() to combined data (add length?)
+
+3.   Impute missing depth using the combined data (I guess the difference would be neglatable if we use seperate BTSQ3 or IBTSQ3 data)
+
+4.   Select area (IIIa20, IV), month>6, month<10, exclude german-<=2001-BT7 samples
+
+5.   addWeightByHaul()
+
+6.   then separate combined, BTSQ3, IBTSQ3, 3 data sets
+
+7.   select an area of interest with sufficient sample coverage
+
+8.   for all 3 data sets, exclude bel-2015-5016-BT4S, and gear ABD
+
+9.   re-select year 1996-datayear
+
+10.  estimate ALK (from non-NA age samples) and apply ALK: to combined set and BTSQ3  (not to IBTSQ3)
+
+11. Apply survey indices models to BTSQ3 data (where ALK are estimated only from BTSQ3)
+
+12. Apply survey indices models to combined data (where ALK are estimated from the combined set) – not used in stock assessment
+
+13. Apply survey indices models to IBTSQ3 data (where ALK are estimated from the combined set)
+
+# 4. BTSQ3
+
+## BTS alk
+
+```{r 03_alk_BTS, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   2. alk              ###################################
+########################################################################
+## load processed BTS data
+load(file=paste(mydatapath, "Data/BTS_",work_year, "_processed.RData", sep=""))
+
+temp <- aggregate(NoAtALK ~ Age + Year, FUN=sum, data=mydQ.BTS[[1]])
+ggplot(temp, aes(x=Age, y=NoAtALK, color=Year )) + 
+  geom_point(alpha=0.6) +
+  geom_line(size=1) +
+  #scale_color_distiller(palette="Spectral") +
+  scale_x_continuous(name="Age", breaks=seq(0, 10, 1), labels=seq(0, 10, 1)) 
+
+temp <- aggregate(NoAtALK ~ Age + Year + Country, FUN=sum, data=mydQ.BTS[[1]])
+f1 <- ggplot(temp[temp$Year %in% as.character(1996:2020),], aes(x=Age, y=NoAtALK, color=Year )) + 
+  geom_point(alpha=0.6) +
+  geom_line(size=1) +
+  #scale_color_distiller(palette="Spectral") +
+  scale_x_continuous(name="Age", breaks=seq(0, 10, 1), labels=seq(0, 10, 1)) 
+f2 <- facet(f1, facet.by = c("Country"), ncol = 1, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14))
+print(f2)
+
+## check age sample size, for alk construction
+xtabs(!is.na(Age)~Year+Age,mydQ.DYFS[[1]])
+
+
+## plot length-age 
+
+ggplot(mydQ.BTS[[1]], aes(x=LngtCm, y=Age, group=factor(Country), shape=factor(Country), color=factor(Country))) +
+  geom_point(aes(size=factor(Country )))+
+  scale_shape_manual(values=c(0, 1, 2,3))+
+  geom_smooth()+
+  theme_bw()
+
+
+mysurvey       <- "BTSQ3"
+myalk          <- "BTSQ3"
+res            <- run_alk(myalk)
+mydQ.BTS       <- res$mydd
+## in 2019 the grid size is 903 length(grid.BTS[[1]]), since 2020, the getGrid function is changed, so we need to increase nLon to get a similar size grid, change nLon from 40 to 52 (906 points)
+grid.BTS       <- getGrid(mydQ.BTS,nLon=52)
+length(grid.BTS[[1]])
+
+```
+
+## BTS sweptarea
+
+```{r 03_alk_BTS, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   3. swept area              ###################################
+########################################################################
+## read swept area assessment output
+## BTS
+sw    <- read.csv("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/swept_area/BTS_SweptAreaAssessmentOutput_2021-09-28 11_04_01.csv", stringsAsFactors = FALSE)
+myvar <- c("Survey", "Quarter", "Country", "Ship", "Gear", "StNo", "HaulNo","Year", "Month", "Day" )
+mydQ.BTS[[2]]$Quarter <- as.character(mydQ.BTS[[2]]$Quarter)
+mydQ.BTS[[2]]$Ship    <- as.character(mydQ.BTS[[2]]$Ship)
+mydQ.BTS[[2]]$Gear    <- as.character(mydQ.BTS[[2]]$Gear)
+mydQ.BTS[[2]]$Year    <- as.character(mydQ.BTS[[2]]$Year)
+nrow(mydQ.BTS[[2]])
+mydQ.BTS[[2]]         <- merge(mydQ.BTS[[2]], sw[,c(myvar, "SweptAreaBWKM2")], by=myvar, all.x=T)
+nrow(mydQ.BTS[[2]])
+names(mydQ.BTS[[2]])[names(mydQ.BTS[[2]]) == "SweptAreaBWKM2"] <- "SweptArea"
+summary(mydQ.BTS[[2]]$SweptArea)  ## 3 NA
+sum(mydQ.BTS[[2]]$SweptArea==0, na.rm=T)
+plot(mydQ.BTS[[2]]$HaulDur, mydQ.BTS[[2]]$Distance)
+plot(mydQ.BTS[[2]]$HaulDur, mydQ.BTS[[2]]$SweptArea, 
+     xlab="Haul duration", ylab="swept area")
+
+plot( aa$HaulDur,aa$SweptArea)
+points( aa$HaulDur[aa$Year<=2001],aa$SweptArea[aa$Year<=2001], col="red")
+points( aa$HaulDur[aa$Year>2001],aa$SweptArea[aa$Year>2001], col="green")
+
+
+## save processed data: res$mydd, res$mygrid
+save(mydQ.BTS, grid.BTS, file=paste(mydatapath, "Data/plaice_", mysurvey, "_",work_year, "_alk_swept_processed.RData", sep=""))
+
+### Calculate swept area
+#mydQ.BTS[[2]]$BeamLngt  <- as.numeric(substr(mydQ.BTS[[2]]$Gear, 3,3))
+#table(mydQ.BTS[[2]]$BeamLngt, useNA="always")
+#mydQ.BTS[[2]]$SweptArea <- NA
+#ind1 <- which(!is.na(mydQ.BTS[[2]]$Distance) & mydQ.BTS[[2]]$Distance<10000 & mydQ.BTS[[2]]$Distance>0)
+#mydQ.BTS[[2]]$SweptArea[ind1] <- mydQ.BTS[[2]]$Distance[ind1]/1000 * mydQ.BTS[[2]]$BeamLngt[ind1]/1000
+#ind2 <- which(is.na(mydQ.BTS[[2]]$SweptArea))
+#mydQ.BTS[[2]]$SweptArea[ind2] <- mydQ.BTS[[2]]$GroundSpeed[ind2]*1.852*(mydQ.BTS[[2]]$HaulDur[ind2]/60)*(mydQ.BTS[[2]]$BeamLngt[ind2]/1000)
+#summary(mydQ.BTS[[2]]$SweptArea)
+
+
+```
+
+## BTS indices test runs
+
+```{r 04_extract_indices_BTS, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   3. BTS-Q3 indices              ########################
+########################################################################
+
+mysurvey       <- "BTSQ3"
+## load data after applying alk and swept area
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_", work_year, "_alk_swept_processed.RData", sep="")) ## res$mydd, res$mygrid
+
+## Make ctime : a numeric time variable 
+mydQ.BTS$ctime <- as.numeric(as.character(mydQ.BTS$Year))
+agesQ3         <- 0:10
+## define survey year
+survey_year    <- 1996:last_data_year
+
+#######################
+## Model formulae : gear + haulduration
+#######################
+
+## Stationary model 
+modelsStatZ1   <- rep("Year+Gear+s(lon,lat,bs=c('tp'),k=kvecZ[a])+s(Depth,bs='ts',k=6)+offset(log(HaulDur))",length(agesQ3))
+
+modelsStatP1   <- rep("Year+Gear+s(lon,lat,bs=c('tp'),k=kvecP[a])+s(Depth,bs='ts',k=6)+offset(log(HaulDur))",length(agesQ3))
+
+## non-Stationary model
+modelsNonStat1 <- rep("Year+Gear+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+offset(log(HaulDur))",length(agesQ3))
+
+
+#######################
+## Model formulae : gear + sweptarea
+#######################
+
+## Stationary model 
+modelsStatZ2   <- rep("Year+Gear+s(lon,lat,bs=c('tp'),k=kvecZ[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+modelsStatP2  <- rep("Year+Gear+s(lon,lat,bs=c('tp'),k=kvecP[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+## non-Stationary model
+modelsNonStat2 <- rep("Year+Gear+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+
+#######################
+## Model formulae : sweptarea
+#######################
+
+## Stationary model 
+modelsStatZ3   <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecZ[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+modelsStatP3   <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecP[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+## non-Stationary model
+modelsNonStat3 <- rep("Year+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+######################################################################
+########### run1  ####################################################
+######################################################################
+## gear + haulduration
+mc.cores        <- 1
+
+BTSmodels1       <- list()
+BTSmodels1$SI.ac <- getSurveyIdx(mydQ.BTS,
+                                 ages=agesQ3,                 
+                                 myids=grid.BTS[[3]],
+                                 cutOff=0.5,
+                                 fam="LogNormal",
+                                 mc.cores=mc.cores,
+                                 modelZ=modelsStatZ1,
+                                 modelP=modelsStatP1)
+
+## save as Rdata
+save(BTSmodels1, mydQ.BTS, agesQ3, grid.BTS, file=paste(my_result_path, "Model_result/plaice_BTS_run1.RData", sep="")) 
+## save to csv
+myfilepath <- paste(my_result_path,"Model_result/plaice_BTS_run1.csv", sep="")
+write_to_csv(BTSmodels1, myfilepath)
+
+
+######################################################################
+########### run2  ####################################################
+######################################################################
+## gear + sweptarea
+mc.cores        <- 1
+
+BTSmodels2       <- list()
+
+dd <- subset(mydQ.BTS, !is.na(SweptArea)) ## exclude NA in sweptarea
+BTSmodels2$SI.ac <- getSurveyIdx(dd,
+                                 ages=agesQ3,                 
+                                 myids=grid.BTS[[3]],
+                                 cutOff=0.5,
+                                 fam="LogNormal",
+                                 mc.cores=mc.cores,
+                                 modelZ=modelsStatZ2,
+                                 modelP=modelsStatP2)
+
+## save as Rdata
+save(BTSmodels2, mydQ.BTS, agesQ3, grid.BTS, file=paste(my_result_path, "Model_result/plaice_BTS_run2.RData", sep="")) 
+## save to csv
+myfilepath <- paste(my_result_path,"Model_result/plaice_BTS_run2.csv", sep="")
+write_to_csv(BTSmodels2, myfilepath)
+
+######################################################################
+########### run3  ####################################################
+######################################################################
+## sweptarea
+mc.cores        <- 1
+
+BTSmodels3       <- list()
+dd <- subset(mydQ.BTS, !is.na(SweptArea)) ## exclude NA in sweptarea
+BTSmodels3$SI.ac <- getSurveyIdx(dd,
+                                 ages=agesQ3,                 
+                                 myids=grid.BTS[[3]],
+                                 cutOff=0.5,
+                                 fam="LogNormal",
+                                 mc.cores=mc.cores,
+                                 modelZ=modelsStatZ3,
+                                 modelP=modelsStatP3)
+
+## save as Rdata
+save(BTSmodels3, mydQ.BTS, agesQ3, grid.BTS, file=paste(my_result_path, "Model_result/plaice_BTS_run3.RData", sep="")) 
+## save to csv
+myfilepath <- paste(my_result_path,"Model_result/plaice_BTS_run3.csv", sep="")
+write_to_csv(BTSmodels3, myfilepath)
+
+######################################################################
+########### run4  ####################################################
+######################################################################
+## gear + sweptarea + timevarying spatial
+mc.cores        <- 1
+
+BTSmodels2       <- list()
+
+dd <- subset(mydQ.BTS, !is.na(SweptArea)) ## exclude NA in sweptarea
+BTSmodels4$SI.ac <- getSurveyIdx(dd,
+                                 ages=agesQ3,                 
+                                 myids=grid.BTS[[3]],
+                                 cutOff=0.5,
+                                 fam="LogNormal",
+                                 mc.cores=mc.cores,
+                                 modelZ=modelsNonStat2,
+                                 modelP=modelsNonStat2)
+
+## save as Rdata
+save(BTSmodels4, mydQ.BTS, agesQ3, grid.BTS, file=paste(my_result_path, "Model_result/plaice_BTS_run4.RData", sep="")) 
+## save to csv
+myfilepath <- paste(my_result_path,"Model_result/plaice_BTS_run4.csv", sep="")
+write_to_csv(BTSmodels4, myfilepath)
+
+
+######################################################################
+########### compare different runs  ####################################################
+######################################################################
+res1     <- read.csv(paste(my_result_path,"Model_result/plaice_BTS_run1.csv", sep=""))
+res1$run <- "gear + haulduration"
+res2     <- read.csv(paste(my_result_path,"Model_result/plaice_BTS_run2.csv", sep=""))
+res2$run <- "gear + sweptarea"
+res3     <- read.csv(paste(my_result_path,"Model_result/plaice_BTS_run3.csv", sep=""))
+res3$run <- "sweptarea"
+
+res      <- rbind(res1, res2, res3)
+res$age[res$age=="10"] <- "10+"
+res$age <- factor(res$age, levels=c(as.character(0:9),"10+"))
+
+## plot
+f1  <- ggplot(res, aes(x=year, y=data, group=factor(run), color=factor(run))) +
+  geom_line(size=1) +
+  #scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  scale_x_continuous(name="", breaks=unique(res$year), minor_breaks = unique(res$year), labels=unique(res$year)) +
+  ggtitle("BTS") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+
+
+```
+
+## BTS indices test run: time-varying spatial effect
+
+```{r 04_extract_indices_BTS, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+mysurvey       <- "BTSQ3"
+## load data after applying alk and swept area
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_", work_year, "_alk_swept_processed.RData", sep="")) ## res$mydd, res$mygrid
+
+## non-Stationary model
+modelsNonStat2 <- rep("Year+Gear+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+
+## time varying
+mc.cores        <- 1
+
+BTSmodelsNonStat       <- list()
+
+##??
+dd <- subset(mydQ.BTS, !is.na(SweptArea)) ## exclude NA in sweptarea
+
+BTSmodelsNonStat$SI.ac <- getSurveyIdx(dd,
+                                 ages=agesQ3,                 
+                                 myids=grid.BTS[[3]],
+                                 cutOff=0.5,
+                                 fam="LogNormal",
+                                 mc.cores=mc.cores,
+                                 modelZ=modelsNonStat2,
+                                 modelP=modelsNonStat2)
+
+
+## save to RData
+save(BTSmodelsNonStat, mydQ.BTS, agesQ3, grid.BTS, file=paste(my_result_path, "Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_Nonstationary.RData", sep="")) 
+
+## save to dat file
+exportSI(BTSmodelsNonStat$SI.ac$idx,agesQ3,survey_year,toy=mean(mydQ.BTS[[2]]$timeOfYear,na.rm=TRUE),
+         file=paste(my_result_path, "Model_result/indices_", mysurvey,"_combined_WGNSSK_", work_year, "_Nonstationary.dat", sep=""),
+         nam=paste("NS Plaice ; Last age is plus group, calculated",Sys.time()))
+
+## save to csv
+write.csv(BTSmodelsNonStat$SI.ac$idx, file=paste(my_result_path, "Model_result/","indices_", mysurvey,"_combined_WGNSSK_", work_year, "_Nonstationary_wide.csv", sep=""))
+
+## write to csv file
+myfilepath <- paste(my_result_path, "Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_Nonstationary.csv", sep="")
+write_to_csv(BTSmodelsNonStat, myfilepath)
+
+######################################################################
+########### compare different runs  ####################################################
+######################################################################
+res1     <- read.csv(paste(my_result_path,"Model_result/result_BTSQ3_WGNSSK_2021_stationary.csv", sep=""))
+res1$run <- "time-invariant"
+res2     <- read.csv(paste(my_result_path,"Model_result/result_BTSQ3_WGNSSK_2021_Nonstationary.csv", sep=""))
+res2$run <- "time-varying"
+
+
+res      <- rbind(res1, res2)
+res$age[res$age=="10"] <- "10+"
+res$age <- factor(res$age, levels=c(as.character(0:9),"10+"))
+
+## plot
+f1  <- ggplot(res, aes(x=year, y=data, group=factor(run), color=factor(run))) +
+  geom_line(size=1) +
+  #scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  scale_x_continuous(name="", breaks=unique(res$year), minor_breaks = unique(res$year), labels=unique(res$year)) +
+  ggtitle("BTS") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+```
+
+
+## BTS leave-one-country-out
+
+```{r 04_extract_indices_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+## load model result: run2
+load(file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run2.RData", sep=""))
+
+
+## leave-one-country-out analysis
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0)
+aa <- leaveout.surveyIdx(IBTSmodels2$SI.ac, dd, grid.IBTSQ3,dd[[2]]$Country)
+plot(aa)
+
+save(aa, dd, agesQ3, grid.IBTSQ3, file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run2_leave_one_country_out.RData", sep=""))
+
+mymodel <- IBTSmodels2$SI.ac
+idx     <- mymodel$idx
+idx.m   <- melt(idx,value.name = "data", varnames = c("year","age"))
+lo      <- mymodel$lo
+colnames(lo) <- colnames(idx)
+rownames(lo) <- rownames(idx)
+lo      <- melt(lo,value.name = "lo", varnames = c("year","age"))
+up      <- mymodel$up
+colnames(up) <- colnames(idx)
+rownames(up) <- rownames(idx)
+up      <- melt(up,value.name = "up", varnames = c("year","age"))
+idx.res <- cbind(idx.m,lo$lo,up$up)
+colnames(idx.res)[4] <- "lo" 
+colnames(idx.res)[5] <- "up"
+idx.res$Country <- "all"
+datall  <- idx.res
+for (i in 1:length(names(aa))) {
+  idx     <- aa[[i]]$idx
+  idx.m   <- melt(idx,value.name = "data", varnames = c("year","age"))
+  lo      <- aa[[i]]$lo  ## all zero
+  colnames(lo) <- colnames(idx)
+  rownames(lo) <- rownames(idx)
+  lo      <- melt(lo,value.name = "lo", varnames = c("year","age"))
+  up      <- aa[[i]]$up
+  colnames(up) <- colnames(idx)
+  rownames(up) <- rownames(idx)
+  up      <- melt(up,value.name = "up", varnames = c("year","age"))
+  idx.res <- cbind(idx.m,lo$lo,up$up)
+  colnames(idx.res)[4] <- "lo" 
+  colnames(idx.res)[5] <- "up"
+  idx.res$Country <- names(aa)[i]
+  
+  datall <- rbind(datall, idx.res)
+  
+}
+datall$age  <- as.character(datall$age)
+datall$age[datall$age=="10"] <- "10+"
+datall$age <- factor(datall$age, levels=c(as.character(0:9),"10+"))
+
+## plot
+f1  <- ggplot(datall, aes(x=year, y=data, group=factor(Country), color=factor(Country))) +
+  geom_line(size=1) +
+  geom_line(data=datall[datall$Country == "all",],aes(x=year, y=data), size=1, color="black") +
+  #geom_ribbon(aes(ymin = lo, ymax = up,fill=Country),alpha = 0.3, colour = NA) +
+  #scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  #scale_colour_brewer(palette = "Set1") +
+  #scale_fill_brewer(palette = "Set1") +
+  scale_colour_manual(values =colset) + 
+  scale_x_continuous(name="", breaks=unique(res$year), minor_breaks = unique(res$year), labels=unique(res$year)) +
+  ggtitle("IBTSQ3: leave-one-country-out") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+```
+
+
+## BTS indices final run
+
+```{r 04_extract_indices_BTS, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+##############   3. BTS-Q3 indices              ########################
+########################################################################
+
+mysurvey       <- "BTSQ3"
+## load data after applying alk and swept area
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_", work_year, "_alk_swept_processed.RData", sep="")) ## res$mydd, res$mygrid
+
+## Make ctime : a numeric time variable 
+mydQ.BTS$ctime <- as.numeric(as.character(mydQ.BTS$Year))
+agesQ3         <- 0:10
+## define survey year
+survey_year    <- 1996:last_data_year
+
+
+
+#######################
+## Model formulae : gear + sweptarea
+#######################
+
+## Stationary model 
+modelsStatZ2   <- rep("Year+Gear+s(lon,lat,bs=c('tp'),k=kvecZ[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+modelsStatP2  <- rep("Year+Gear+s(lon,lat,bs=c('tp'),k=kvecP[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+## non-Stationary model
+modelsNonStat2 <- rep("Year+Gear+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+mc.cores        <- 1
+
+BTSmodelsNonStat       <- list()
+
+##??
+dd <- subset(mydQ.BTS, !is.na(SweptArea)) ## exclude NA in sweptarea
+
+BTSmodelsNonStat$SI.ac <- getSurveyIdx(dd,
+                                 ages=agesQ3,                 
+                                 myids=grid.BTS[[3]],
+                                 cutOff=0.5,
+                                 fam="LogNormal",
+                                 mc.cores=mc.cores,
+                                 modelZ=modelsNonStat2,
+                                 modelP=modelsNonStat2)
+
+AIC.surveyIdx(BTSmodelsNonStat$SI.ac)
+## save to RData
+save(BTSmodelsNonStat, mydQ.BTS, agesQ3, grid.BTS, file=paste(my_result_path, "Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_Nonstationary.RData", sep="")) 
+
+## save to dat file
+exportSI(BTSmodelsNonStat$SI.ac$idx,agesQ3,survey_year,toy=mean(mydQ.BTS[[2]]$timeOfYear,na.rm=TRUE),
+         file=paste(my_result_path, "Model_result/indices_", mysurvey,"_combined_WGNSSK_", work_year, "_Nonstationary.dat", sep=""),
+         nam=paste("NS Plaice ; Last age is plus group, calculated",Sys.time()))
+
+## save to csv
+write.csv(BTSmodelsNonStat$SI.ac$idx, file=paste(my_result_path, "Model_result/","indices_", mysurvey,"_combined_WGNSSK_", work_year, "_Nonstationary_wide.csv", sep=""))
+
+## write to csv file
+myfilepath <- paste(my_result_path, "Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_Nonstationary.csv", sep="")
+write_to_csv(BTSmodelsNonStat, myfilepath)
+
+
+#################################
+## retrospective
+
+dd <- subset(mydQ.BTS, !is.na(SweptArea)) ## exclude NA in sweptarea
+myretro <- retro.surveyIdx(BTSmodelsNonStat$SI.ac, dd, grid.BTS[[3]], npeels = 5, predD = NULL)
+
+plot(myretro)
+
+## save as Rdata
+save(myretro, file=paste(my_result_path, "Model_result/plaice_BTS_NonStat_retro.RData", sep="")) 
+
+#2*BTSmodels$SI.ac$edfs - BTSmodels$SI.ac$logLik*2
+
+## surveyIdx output
+SI$idx #index per age per year
+SI$lo #lower limit per age per year
+SI$up #upper limit per age per year
+SI$zModels #model output for zeroes models per age
+SI$pModels #model output for counts models per age
+SI$gPreds #last year's predicted values per grid cell, one list for each age group
+SI$pData[[2]] #not sure what this is
+SI$gPreds2 #predicted values of all years by age group
+
+
+
+library(FLCore) 
+library(FLAssess)
+library(ggplotFL)
+indices  <- readFLIndices(paste(my_result_path,"Model_result/indices_BTSQ3_combined_WGNSSK_2021_stationary.dat", sep=""), na.strings="-1")
+
+## cohort plot
+mydat <- as.data.frame(index(indices[[1]]), cohort=TRUE)
+myyear <- unique(mydat$year)
+mydat$cohort <- as.numeric(mydat$cohort)
+f1 <- ggplot(mydat, aes(x=as.numeric(cohort), y=log(data), group=factor(age), color=factor(age))) +
+  geom_line() +
+  #scale_color_distiller(palette="Spectral") +
+  geom_point(colour='white', size=5) +
+  geom_text(aes(label=age)) +
+  ggtitle("BTS: indices by cohort")+
+  theme_bw() +
+  xlab("Cohort") + ylab("") +
+  scale_x_continuous(name="", breaks=myyear, labels=myyear, limits=c(min(myyear), max(myyear))) +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "right", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0))
+plot(f1)
+
+ggplot(mydat, aes(x=year, y=log(data), group=factor(age), color=factor(age))) +
+  geom_point(colour='white', size=5) + 
+  geom_text(aes(label=age)) +
+  geom_line(data=mydat, aes(x=year, y=log(data), group=factor(cohort)), color="black") +
+  theme_bw() +
+  ggtitle("BTS: log-catch curves")+
+  xlab("Cohort") + ylab("") +
+  scale_x_continuous(name="", breaks=myyear, labels=myyear, limits=c(min(myyear), max(myyear))) +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "right", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0))
+
+
+cohcorrplot(FLCohort(index(indices[[1]])))
+aa <- trim(indices[[1]], year=1996:2010)
+cohcorrplot(FLCohort(index(aa)))
+bb <- trim(indices[[1]], year=2009:2020)
+cohcorrplot(FLCohort(index(bb)))
+
+plotInternalConsistency(indices[["NSIBTSQ3"]], mark.last=T)
+```
+
+
+## BTS model diagnosis
+
+```{r 04_DYFS_diagnosis, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+load(file=paste(my_result_path, "Model_result/result_BTSQ3_WGNSSK_2021_stationary.RData", sep="")) 
+
+AIC.surveyIdx(BTSmodels$SI.ac)
+
+myfit   <-BTSmodels$SI.ac
+mydat   <- mydQ.BTS
+mygridd <- grid.BTS[[3]]
+myage       <- 0:10
+
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(2,2)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="residuals",plotByAge=FALSE)
+
+load(file=paste(my_result_path, "Model_result/result_BTSQ3_WGNSSK_2021_Nonstationary.RData", sep=""))
+
+AIC.surveyIdx(BTSmodelsNonStat$SI.ac)
+surveyIdxPlots(BTSmodelsNonStat$SI.ac,mydQ.BTS,cols=myage+1,myids=grid.BTS[[3]],
+               par=list(mfrow=c(2,2)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="residuals",plotByAge=FALSE)
+
+
+mymod <- BTSmodels$SI.ac
+# Randomized quantile residuals
+aa <- residuals(mymod, a = 1)  ## age group1 = age0
+qqnorm(aa, pch = 1, frame = FALSE)
+qqline(aa, col = "steelblue", lwd = 2)
+
+mymod <- BTSmodelsNonStat$SI.ac
+# Randomized quantile residuals
+aa <- residuals(mymod, a = 1)  ## age group1 = age0
+qqnorm(aa, pch = 1, frame = FALSE)
+qqline(aa, col = "steelblue", lwd = 2)
+
+## internal consistency
+internalCons(myfit$idx, do.plot=TRUE)
+
+## catch curves
+
+## index with CI
+#pdf(paste(plot_path, mysurvey, "_by_age_indices_", last_data_year,".pdf", sep=""))
+#png(filename = paste(plot_path, mysurvey, "_by_age_indices_", last_data_year,".png", sep=""), width = 800, height = 800)
+
+surveyIdxPlots(myfit,mydat,cols=1:length(myfit$pModels),myids=mygridd,
+               par=list(mfrow=c(2,2)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="index",plotByAge=FALSE)
+
+## some years ended up as zero indices for age 2-3, in the plots seems it is not plotted and looks like NA
+
+#dev.off()
+
+## residuals per age
+#png(filename = paste(plot_path, mysurvey, "_by_age_residuals_", last_data_year,".png", sep=""), width = 600, height = 600)
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(1,2)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="residuals",plotByAge=FALSE)
+#dev.off()
+
+surveyIdxPlots(myfit,mydat,myids=mygridd,,par=list(mfrow=c(2,2),mar=c(4,3,1,1)),select=c("fitVsRes"),plotByAge=FALSE)
+surveyIdxPlots(myfit,mydat,myids=mygridd,,par=list(mfrow=c(3,3),mar=c(4,3,1,1)),select=c("resVsYear"),plotByAge=FALSE)
+surveyIdxPlots(myfit,mydat,myids=mygridd,par=list(mfrow=c(3,3),mar=c(4,3,1,1)),select=c("resVsShip"),plotByAge=FALSE) 
+
+## year effect
+par(mfrow=c(4,2))
+year_list <- c(2003:2019)
+plot(year_list,coef(myfit$zModels[[1]])[2:18], type="o", xlab="year", ylab="year effect", main="Z model")
+plot(year_list,coef(myfit$pModels[[1]])[2:18], type="o", xlab="year", ylab="year effect", main="P model")
+plot(year_list,coef(myfit$zModels[[2]])[2:18], type="o", xlab="year", ylab="year effect", main="Z model")
+plot(year_list,coef(myfit$pModels[[2]])[2:18], type="o", xlab="year", ylab="year effect", main="P model")
+plot(year_list,coef(myfit$zModels[[3]])[2:18], type="o", xlab="year", ylab="year effect", main="Z model")
+plot(year_list,coef(myfit$pModels[[3]])[2:18], type="o", xlab="year", ylab="year effect", main="P model")
+plot(year_list,coef(myfit$zModels[[4]])[2:18], type="o", xlab="year", ylab="year effect", main="Z model")
+plot(year_list,coef(myfit$pModels[[4]])[2:18], type="o", xlab="year", ylab="year effect", main="P model")
+
+#############plot spatial effect  ####################
+## estimated abundance map per age- time invariant model
+
+if (stationary==FALSE) {
+## estimated abundance map per age, for time-varing model
+ys = as.numeric(as.character(levels(mydat[[1]]$Year)))
+mapy = min(ys):max(ys)
+for(yy in mapy){
+  addLegend = TRUE
+  png(filename = paste("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/plots/BTS/", mysurvey, "_by_age_abundmap_time_varying_", yy,".png", sep=""), width = 600, height = 600)
+  
+  f1 <- surveyIdxPlots(myfit,mydat,alt.idx=SI.alt,myids=mygridd,par=list(mfrow=c(3,4),mar=c(4,1,1,1)),select=c("map"),plotByAge=FALSE,colors=rev(heat.colors(5)),legend=addLegend,year=yy)
+  
+  #If ’select’ equals ’map’ a specific year
+c#an be chosen (only meaningful for time-varying spatial effects). If select equals
+#’absolutemap’ year must be a vector.
+  print(f1)
+  dev.off()
+  #print(f1)
+}
+}
+
+### make into animation
+library(purrr)
+library(magick)
+capturas <- list.files("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/plots/BTS/", pattern = ".png")
+
+# get all images in a list
+setwd("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/plots/BTS/")
+images <- map(capturas, image_read)
+images <- image_join(images)
+
+myani <- image_animate(images, fps = 1, dispose = "previous")
+image_write(myani, "C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/plots/BTS/BTS_spatial.gif")
+
+if (stationary==TRUE) {
+png(filename = paste("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/plots/BTS/", mysurvey, "_by_age_abundmap_time_invariant.png", sep=""), width = 600, height = 600)
+
+f1 <- surveyIdxPlots(myfit,mydat,alt.idx=SI.alt,myids=mygridd,par=list(mfrow=c(3,4),mar=c(4,1,1,1)),select=c("map"),plotByAge=FALSE,colors=rev(heat.colors(5)),legend=addLegend)
+print(f1)
+dev.off()
+}
+
+
+## spatial residual, takes ages to plot...
+surveyIdxPlots(myfit,mydat,alt.idx=SI.alt,myids=mygridd,par=list(mfrow=c(3,4),mar=c(4,1,1,1)),select=c("spatialResiduals"),plotByAge=FALSE,colors=rev(heat.colors(5)),legend=addLegend,year=yy)
+
+# presence-absence
+summary(mymodel$SI.ac$zModels[[i]])
+plot(mymodel$SI.ac$zModels[[i]])
+gam.check(mymodel$SI.ac$zModels[[i]] )
+vis.gam(mymodel$SI.ac$zModels[[i]] , view=c("lon", "lat"), plot.type="contour")  ## heatmap, white means higher value
+vis.gam(mymodel$SI.ac$zModels[[i]] , view=c("Depth", "Year"), plot.type="contour")
+
+# positive
+summary(mymodel$SI.ac$pModels[[i]])
+plot(mymodel$SI.ac$pModels[[i]])
+gam.check(mymodel$SI.ac$pModels[[i]] )
+vis.gam(mymodel$SI.ac$pModels[[i]] , view=c("lon", "lat"), plot.type="contour")  ## heatmap, white means higher value
+vis.gam(mymodel$SI.ac$pModels[[i]] , view=c("Depth", "Year"), plot.type="contour")
+
+
+## model intepretation
+
+#2*BTSmodels$SI.ac$edfs - BTSmodels$SI.ac$logLik*2
+
+## surveyIdx output
+SI$idx #index per age per year
+SI$lo #lower limit per age per year
+SI$up #upper limit per age per year
+SI$zModels #model output for zeroes models per age
+SI$pModels #model output for counts models per age
+SI$gPreds #last year's predicted values per grid cell, one list for each age group
+SI$pData[[2]] #not sure what this is
+SI$gPreds2 #predicted values of all years by age group
+
+## cohort plot and internal consistencey, in previous section
+
+```
+
+## Compare BTS indices
+
+```{r 041_Compare_BTS, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=T, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+## delta-gam indices was applied since WG2017
+mysurvey <- "BTSQ3_combined"
+indices <- collect_historical_indices(mysurvey, agesQ3, work_year)
+
+##plot: original scale
+f1 <- ggplot(indices, aes(x=year, y=indices, color=work_year)) +
+  geom_line(size=1, alpha=0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  scale_x_continuous(name="", breaks=seq(1996, work_year, 1), labels=seq(1996, work_year, 1)) +
+  ggtitle(paste(mysurvey, " indices: original scale", sep="")) +
+  theme_bw()+
+  xlab("")+ ylab("") +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "bottom", 
+        legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=15, face="plain"),
+        axis.text.x = element_text(color = "black", size = 12, angle = 90),
+        axis.text.y = element_text(color = "black", size = 12, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 12, angle=0), panel.labs.font.x = list(size = 12))
+print(f2)
+
+
+
+##plot, log scale
+f1 <- ggplot(indices, aes(x=year, y=log(indices+0.1), color=work_year)) +
+  geom_line(size=1, alpha=0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  scale_x_continuous(name="", breaks=seq(1996, work_year, 1), labels=seq(1996, work_year, 1)) +
+  ggtitle(paste(mysurvey, " indices: log scale", sep="")) +
+  theme_bw()+
+  xlab("")+ ylab("") +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "bottom", 
+        legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=15, face="plain"),
+        axis.text.x = element_text(color = "black", size = 12, angle = 90),
+        axis.text.y = element_text(color = "black", size = 12, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 12, angle=0), panel.labs.font.x = list(size = 12))
+print(f2)
+
+```
+
+## plot BTS model result
+
+```{r 06_plot_BTS_model_rseult, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=20, fig.width=14, fig.align="center", fig.cap="Figure X. Estimated survey indices by age.", fig.pos="htb!"}
+# load model outcome
+mysurvey       <- "BTSQ3"
+plot_path      <- paste(mypath, "/plot_BTSQ3/", sep="")
+load(file=paste("result_", mysurvey, "_WGNSSK_", work_year, "_stationary.RData", sep=""))  # BTSmodels, mydQ.BTS, agesQ3, grid.BTS
+
+stationary <- TRUE
+mydat   <- mydQ.BTS
+myage   <- agesQ3
+mygridd <- grid.BTS[[3]]
+
+
+#load(paste("result_model_", work_year, "_", mysurvey,".RData", sep="")) 
+myfit   <- BTSmodels$SI.ac
+
+
+# internal consistency
+internalCons(myfit$idx, do.plot=TRUE)
+
+
+## index with CI
+#pdf(paste(plot_path, mysurvey, "_by_age_indices_", last_data_year,".pdf", sep=""))
+png(filename = paste(plot_path, mysurvey, "_by_age_indices_", last_data_year,".png", sep=""), width = 800, height = 800)
+
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(4,3)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="index",plotByAge=FALSE)
+dev.off()
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(4,3)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="index",plotByAge=FALSE)
+
+
+## residuals per age
+png(filename = paste(plot_path, mysurvey, "_by_age_residuals_", last_data_year,".png", sep=""), width = 600, height = 600)
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(4,3)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="residuals",plotByAge=FALSE)
+dev.off()
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(4,3)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="residuals",plotByAge=FALSE)
+
+## estimated abundance map per age- time invariant model
+if (stationary==TRUE) {
+png(filename = paste(plot_path, mysurvey, "_by_age_abundmap_", last_data_year,"_stationary.png", sep=""), width = 600, height = 600)
+
+surveyIdxPlots(myfit,mydQ.BTS,myids=grid.BTS[[3]],
+               par=list(mfrow=c(4,3)),legend=FALSE,colors=rev(heat.colors(10)),
+               select="map",plotByAge=FALSE)
+dev.off()
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(3,3)),legend=FALSE,colors=rev(heat.colors(10)),
+               select="map",plotByAge=FALSE)
+}
+
+if (stationary==FALSE) {
+## estimated abundance map per age, for time-varing model
+ys = as.numeric(as.character(levels(mydat$Year)))
+mapy = min(ys):max(ys)
+for(yy in mapy){
+  addLegend = FALSE
+  png(filename = paste(plot_path, mysurvey, "_by_age_abundmap_time_varying_", yy,".png", sep=""), width = 600, height = 600)
+  
+  f1 <- surveyIdxPlots(myfit,mydat,alt.idx=SI.alt,myids=mygridd,par=list(mfrow=c(3,4),mar=c(4,1,1,1)),select=c("map"),plotByAge=FALSE,colors=rev(heat.colors(5)),legend=addLegend,year=yy)
+  print(f1)
+  dev.off()
+  print(f1)
+}
+}
+
+
+```
+
+## plot BTS haul
+
+```{r 05_plot_BTS, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+library(RColorBrewer)
+#display.brewer.all()
+colset      <- brewer.pal(9, "Set1")
+#hist(discoveries,col = colset)
+colset      <- c("#000000", colset)
+## country code before WGNSSK2021
+#col_country <- c("NED", "ENG", "BEL", "GFR", "SCO", "DEN", "SWE", "NOR", "FRA")
+## country code since WGNSSK2021
+col_country <- c("NL", "GB", "BE", "DE", "SCO", "DEN", "SWE", "NOR", "FRA")
+library(colorRamps)
+colset1      <- blue2red(10)
+
+mysurvey       <- "BTSQ3"
+myage          <- agesQ3
+## load data after applying alk
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_", work_year, "_alk_processed.RData", sep="")) ## res$mydd, res$mygrid
+
+
+myyear  <- (last_data_year-2):last_data_year
+#myyear  <- 2016
+mydd    <- mydQ.BTS
+
+###############################################################################
+##### 1. plot raw biomass per haul
+###############################################################################
+## plot biomass per haul
+myscale <- 1/10
+cat("  \n")
+cat(paste("##### biomass per haul ####  \n"))
+cat("  \n")
+for (myiyear in myyear) {
+  plot_raw_biomass_haul(mysurvey, mydd, myyear = myiyear, mydatapath, bycountry=TRUE, scale=myscale, myxlim=c(-3.9640, 11.6333),
+                        myylim=c(51.2000, 61.8783))
+}
+
+## make animation
+#setwd("D:/UserData/Work/0_2019_survey_index_calculation/02_script_extract_indice_delta_gam/plot_BTS_Q3/")
+#system('"D:\\software\\ImageMagick-7.0.5-Q16\\convert.exe" -delay 100 -loop 0 BTS-Q3_plot_01_haul_biomass*.png BTS-Q3_haul_biomass_all_years.gif')
+
+###############################################################################
+##### 2. plot mean length distribution
+###############################################################################
+
+cat("  \n")
+cat(paste("##### mean length per haul ####  \n"))
+cat("  \n")
+for (myiyear in myyear) {
+  plot_mean_length_haul(mysurvey, mydd, myyear = myiyear, mydatapath)
+}
+
+## make animation
+#setwd("D:/UserData/Work/0_2019_survey_index_calculation/02_script_extract_indice_delta_gam/plot_BTS_Q3/")
+#system('"D:\\software\\ImageMagick-7.0.5-Q16\\convert.exe" -delay 140 -loop 0 BTS-Q3_plot_02_haul_meanlength*.png BTS-Q3_haul_meanlength_all_years.gif')
+
+
+###############################################################################
+##### 3. plot number@age per haul
+###############################################################################
+myscale <- 1/5
+myscale <- 1/2 ## same scale as IBTS, good for comparison
+
+for (myiyear in myyear) {
+for (iage in as.character(myage)) {
+  plot_number_per_age_haul(mysurvey, mydd, iage=iage, myyear = myiyear, mydatapath, bycountry=TRUE, scale=myscale)
+}
+}
+
+###############################################################################
+##### 4. plot cohort spatial
+###############################################################################
+
+iage <- 3
+myscale <- 1/5
+if (iage==1) {
+  nyear <- 1} else if (iage==2) {
+    nyear <- 3
+  } else {
+    nyear <- 3
+  }
+myyear  <- (last_data_year-nyear):last_data_year
+plot_path  <- paste(mydatapath, "/plot_", mysurvey, "/", sep="")
+bycountry <- TRUE
+par(mfrow=c(1,nyear), mar = c(2,2,2,2), oma=c(2,2,2,2)) 
+for (i in 1:length(myyear)) {
+  iyear <- myyear[i]
+  iiage <- iage-length(myyear) + i
+  d      <- subset(mydd, Year == as.character(iyear))
+  if (iiage == "10") {
+  iiage  <- "10+"
+}
+  d[[2]]$resp.var <- d[[2]]$Nage[,iiage]
+  plot(d$lon, d$lat, type = "n", xlab = "Longitude", ylab = "Latitude", cex.axis=1.5, cex.lab=1.5, cex.main=1.5, xlim=c(-3.97, 11.6367), ylim=c(51.0107, 61.8783), main=paste(mysurvey, " ", iyear, " age ", iiage, sep=""))
+  map("worldHires", fill = TRUE, plot = TRUE, add = TRUE, col = grey(0.5))
+  country_list <- as.character(unique(d$Country))
+  match_col    <- colset[match(country_list, col_country)]
+  for (k in 1:length(country_list)) {
+      d_sub <- subset(d, Country == country_list[k])
+      d_sub = subset(d_sub, resp.var >= 1)
+      points(d_sub$lon, d_sub$lat, pch = 16, cex = myscale * sqrt(d_sub[[2]]$resp.var), col=alpha(match_col[k], 0.5))
+  }
+  #legend("bottomright", country_list, col=match_col, pch=16, pt.cex=2, cex=2)
+
+}
+
+```
+
+
+
+
+Note that these are "concentration" plots and they are normalized for each year (they is a more elaborate explanation in the paper). So they show the relative distribution for each year, and cannot be used for comparing abundances between years.
+
+```{r 06_plot_BTS_model_indices_by_age_not_normalized, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=T, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=20, fig.width=14, fig.align="center", fig.cap="Figure XX. estimated abundance map per age", fig.pos="htb!"}
+mysurvey       <- "BTSQ3"
+load(file=paste("Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_stationary.RData", sep=""))
+myfit <- BTSmodels$SI.ac
+names(myfit)
+myindices    <- myfit$idx
+myindices_lo <- myfit$lo
+myindices_up <- myfit$up
+colnames(myindices_lo) <- colnames(myindices)
+rownames(myindices_lo) <- rownames(myindices)
+colnames(myindices_up) <- colnames(myindices)
+rownames(myindices_up) <- rownames(myindices)
+dat          <- NA
+dat          <- reshape2::melt(myindices)
+dat$type     <- "est"
+temp         <- reshape2::melt(myindices_lo)
+temp$type    <- "lo"
+dat          <- rbind(dat, temp)
+temp         <- reshape2::melt(myindices_up)
+temp$type    <- "up"
+dat          <- rbind(dat, temp)
+names(dat)   <- c("year", "age", "indices", "type")
+dat$lty      <- "dashed"
+dat$lty[dat$type!="est"] <- "solid"
+
+
+## plot by age
+
+f1  <- ggplot(dat, aes(x=year, y=indices, group=factor(type)),linetype=dat$lty) +
+  geom_line(aes(linetype=type)) +
+  scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  scale_x_continuous(name="", breaks=unique(dat$year), labels=unique(dat$year)) +
+  ggtitle("BTS") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "right", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+
+```
+
+
+There is nothing suspect about the index for 2019 age 1 being larger than 2018 age 0, because the age 0 group may not be fully selected by the gear or it's habitat sufficiently covered by the survey and this has happened many times before in the time-series that age group 1 > group 0 for the same cohort.
+I also suspect (hope) that the assessment model estimates different catchabilities for these two groups.
+
+
+```{r 06_plot_model_rseult_fitVsRes, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=20, fig.width=14, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+## fitted versus response
+#pdf(paste(plot_path, mysurvey, "_by_age_fitVsRes_", last_data_year,".pdf", sep=""))
+png(filename = paste(plot_path, mysurvey, "_by_age_fitVsRes_", last_data_year,".png", sep=""), width = 600, height = 600)
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(4,3)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="fitVsRes",plotByAge=FALSE)
+dev.off()
+
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(4,3)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="fitVsRes",plotByAge=FALSE)
+```
+
+```{r 06_plot_model_rseult_depth, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=25, fig.width=14, fig.align="center", fig.cap="Figure X. Depth effect by age.", fig.pos="htb!"}
+## depth effect per age
+surveyIdxPlots(myfit,mydat,alt.idx=SI.alt,myids=mygridd,par=list(mfrow=c(4,3)),select=c("2"),plotByAge=FALSE)
+
+
+
+```
+
+# 5. IBTSQ3
+
+## IBTSQ3 alk
+
+```{r 03_alk_BTS_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   2. alk combined              ###################################
+########################################################################
+## load processed data
+load(file=paste(mydatapath, "Data/BTS_IBTS_Q3_",work_year, "_processed_exclude_NEarea.RData", sep=""))
+
+temp <- aggregate(NoAtALK ~ Age + Year + Survey, FUN=sum, data=dAll[[1]])
+f1 <- ggplot(temp, aes(x=Age, y=NoAtALK, color=Year )) + 
+  geom_point(alpha=0.6) +
+  geom_line(size=1) +
+  #scale_color_distiller(palette="Spectral") +
+  scale_x_continuous(name="Age", breaks=seq(0, 10, 1), labels=seq(0, 10, 1),limits = c(0, 10)) 
+f2 <- facet(f1, facet.by = c("Survey"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14))
+print(f2)
+
+temp <- aggregate(NoAtALK ~ Age + Year + Country + Survey, FUN=sum, data=dAll[[1]])
+f1 <- ggplot(temp, aes(x=Age, y=NoAtALK, color=Year )) + 
+  geom_point(alpha=0.6) +
+  geom_line(size=1) +
+  #scale_color_distiller(palette="Spectral") +
+  scale_x_continuous(name="Age", breaks=seq(0, 10, 1), labels=seq(0, 10, 1),limits = c(0, 10)) 
+f2 <- facet(f1, facet.by = c("Survey", "Country"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14))
+print(f2)
+
+## check age sample size, for alk construction
+xtabs(!is.na(Age)~Year+Age,dAll[[1]])
+
+
+## plot length-age by country
+
+f1 <- ggplot(dAll[[1]][dAll[[1]]$Year %in% c("2018", "2019", "2020"),], aes(x=LngtCm, y=Age, group=factor(Country), shape=factor(Country), color=factor(Country))) +
+  #geom_point(aes(size=factor(Country )))+
+  scale_shape_manual(values=c(0, 1, 2,3, 4,5,6,7))+
+  geom_smooth()+
+  theme_bw() +
+  ylim(c(0,15))
+f2 <- facet(f1, facet.by = c("Survey"), ncol = 2, scales = "fixed", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14))
+print(f2)
+
+## plot length-age by subarea
+dd1 <- dAll[[1]]
+dd2 <- dAll[[2]]
+dd1 <- merge(dd1, dd2[,c("haul.id", "Roundfish")], by="haul.id", all.x=T)
+table(dd1$Roundfish)
+f1 <- ggplot(dd1[dd1$Year %in% c("2018", "2019", "2020"),], aes(x=LngtCm, y=Age, group=factor(Roundfish), shape=factor(Roundfish), color=factor(Roundfish))) +
+  #geom_point(aes(size=factor(Roundfish )))+
+  scale_shape_manual(values=c(0, 1, 2,3, 4,5,6,7))+
+  geom_smooth()+
+  theme_bw()+
+  ylim(c(0,15))
+f2 <- facet(f1, facet.by = c("Survey"), ncol = 2, scales = "fixed", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14))
+print(f2)
+
+dd3 <- dd1[dd1$Roundfish ==3 & !is.na(dd1$Country),]
+dd3$Country <- factor(dd3$Country)
+dd3 <- dd3[!is.na(dd3$Country),]
+f1 <- ggplot(dd3, aes(x=LngtCm, y=Age, group=factor(Country), shape=factor(Country), color=factor(Country))) +
+  geom_point(aes(size=factor(Country )))+
+  scale_shape_manual(values=c(0, 1, 2,3, 4,5,6,7))+
+  geom_smooth()+
+  theme_bw()
+f2 <- facet(f1, facet.by = c("Survey"), ncol = 2, scales = "fixed", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14))
+print(f2)
+
+#dd1$Roundfish <- factor(dd1$Roundfish)
+#fit1 <- gam(Age~s(LngtCm, by=Roundfish) + Country,data=dd1 #  )
+#plot(fit1)
+
+
+
+mysurvey       <- "IBTSQ3"
+res            <- run_alk_BTS_IBTS("BTS+IBTSQ3")
+
+mydQ.IBTSQ3      <- res$mydd
+mydQ.IBTSQ3[[2]] <- subset(mydQ.IBTSQ3[[2]],Survey=="NS-IBTS")
+mydQ.IBTSQ3[[3]] <- subset(mydQ.IBTSQ3[[3]],Survey=="NS-IBTS")
+
+## in 2019 the grid size is 674 length(grid.IBTSQ3[[1]]), since 2020, the getGrid function is changed, so we need to increase nLon to get a similar size grid, change nLon from 40 to 48 (673 points)
+grid.IBTSQ3      <- getGrid(mydQ.IBTSQ3,nLon=48)
+length(grid.IBTSQ3[[1]])
+## save processed data: res$mydd, res$mygrid
+save(mydQ.IBTSQ3, grid.IBTSQ3, file=paste(mydatapath,"Data/plaice_", mysurvey, "_",work_year, "_alk_processed_exclude_NEarea.RData", sep=""))
+## estimated number at age per haul
+#xtabs(NoAtALK ~ Year+Age,data=res$mydd[[1]])
+
+```
+
+## IBTSQ3 sweptarea
+
+```{r 03_alk_BTS, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   3. swept area              ###################################
+########################################################################
+
+load(file=paste(mydatapath,"Data/plaice_", mysurvey, "_",work_year, "_alk_processed_exclude_NEarea.RData", sep=""))
+
+## read swept area assessment output
+## IBTSQ3
+sw    <- read.csv("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/swept_area/IBTS_SweptAreaAssessmentOutput_2021-09-28 11_06_07.csv", stringsAsFactors = FALSE)
+myvar <- c("Survey", "Quarter", "Country", "Ship", "Gear", "StNo", "HaulNo","Year", "Month", "Day" )
+mydQ.IBTSQ3[[2]]$Quarter <- as.character(mydQ.IBTSQ3[[2]]$Quarter)
+mydQ.IBTSQ3[[2]]$Ship    <- as.character(mydQ.IBTSQ3[[2]]$Ship)
+mydQ.IBTSQ3[[2]]$Gear    <- as.character(mydQ.IBTSQ3[[2]]$Gear)
+mydQ.IBTSQ3[[2]]$Year    <- as.character(mydQ.IBTSQ3[[2]]$Year)
+nrow(mydQ.IBTSQ3[[2]])
+mydQ.IBTSQ3[[2]]         <- merge(mydQ.IBTSQ3[[2]], sw[,c(myvar, "SweptAreaWSKM2")], by=myvar, all.x=T) ## for plaice using windspred area
+nrow(mydQ.IBTSQ3[[2]])
+names(mydQ.IBTSQ3[[2]])[names(mydQ.IBTSQ3[[2]]) == "SweptAreaWSKM2"] <- "SweptArea"
+summary(mydQ.IBTSQ3[[2]]$SweptArea)
+sum(mydQ.IBTSQ3[[2]]$SweptArea==0, na.rm=T)
+mydQ.IBTSQ3[[2]]$Year[mydQ.IBTSQ3[[2]]$SweptArea==0]
+## for IBTS, 3 missing values, 59 zero values (in 1996)
+plot(mydQ.IBTSQ3[[2]]$HaulDur, mydQ.IBTSQ3[[2]]$Distance)
+plot(mydQ.IBTSQ3[[2]]$HaulDur, mydQ.IBTSQ3[[2]]$SweptArea)
+
+## save processed data: res$mydd, res$mygrid
+save(mydQ.IBTSQ3, grid.IBTSQ3, file=paste(mydatapath, "Data/plaice_", mysurvey, "_",work_year, "_alk_swept_processed_exclude_NEarea.RData", sep=""))
+
+### Calculate swept area
+#mydQ.BTS[[2]]$BeamLngt  <- as.numeric(substr(mydQ.BTS[[2]]$Gear, 3,3))
+#table(mydQ.BTS[[2]]$BeamLngt, useNA="always")
+#mydQ.BTS[[2]]$SweptArea <- NA
+#ind1 <- which(!is.na(mydQ.BTS[[2]]$Distance) & mydQ.BTS[[2]]$Distance<10000 & mydQ.BTS[[2]]$Distance>0)
+#mydQ.BTS[[2]]$SweptArea[ind1] <- mydQ.BTS[[2]]$Distance[ind1]/1000 * mydQ.BTS[[2]]$BeamLngt[ind1]/1000
+#ind2 <- which(is.na(mydQ.BTS[[2]]$SweptArea))
+#mydQ.BTS[[2]]$SweptArea[ind2] <- mydQ.BTS[[2]]$GroundSpeed[ind2]*1.852*(mydQ.BTS[[2]]$HaulDur[ind2]/60)*(mydQ.BTS[[2]]$BeamLngt[ind2]/1000)
+#summary(mydQ.BTS[[2]]$SweptArea)
+
+
+```
+
+## IBTSQ3 indices test runs: sweptarea
+
+```{r 04_extract_indices_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   3. IBTS-Q3 indices              ########################
+########################################################################
+
+mysurvey       <- "IBTSQ3"
+## load data after applying alk
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_", work_year, "_alk_swept_processed_exclude_NEarea.RData", sep="")) ## res$mydd, res$mygrid
+
+## Make ctime : a numeric time variable 
+mydQ.IBTSQ3$ctime     <- as.numeric(as.character(mydQ.IBTSQ3$Year))
+
+
+agesQ3         <- 0:10
+## define survey year
+survey_year    <- 1996:last_data_year
+
+#######################
+## Model formulae: haul duration
+#######################
+
+## use formula without gear, coz IBTS has only "GOV" gear type
+## Stationary model
+modelsStatZnoGear1 <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecZ[a])+s(Depth,bs='ts',k=6)+offset(log(HaulDur))",length(agesQ3))
+modelsStatPnoGear1 <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecP[a])+s(Depth,bs='ts',k=6)+offset(log(HaulDur))",length(agesQ3))
+
+## non-Stationary model
+modelsNonStatnoGear1     <- rep("Year+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+offset(log(HaulDur))",length(agesQ3))
+
+
+#######################
+## Model formulae: swept area
+#######################
+
+## use formula without gear, coz IBTS has only "GOV" gear type
+## Stationary model
+modelsStatZnoGear2 <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecZ[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+modelsStatPnoGear2 <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecP[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+## non-Stationary model
+modelsNonStatnoGear2     <- rep("Year+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+
+######################################################################
+########### run1  ####################################################
+######################################################################
+## haulduration
+mc.cores        <- 1
+
+IBTSmodels1       <- list()
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0) ## exclude NA in sweptarea
+IBTSmodels1$SI.ac <- getSurveyIdx(dd,
+                              ages=agesQ3,
+                              myids=grid.IBTSQ3[[3]],
+                              cutOff=0.15,
+                              fam="LogNormal",
+                              mc.cores=mc.cores,
+                              modelZ=modelsStatZnoGear1,
+                              modelP=modelsStatPnoGear1)
+
+## save as Rdata
+save(IBTSmodels1, mydQ.IBTSQ3, agesQ3, grid.IBTSQ3, file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run1.RData", sep="")) 
+AIC.surveyIdx(IBTSmodels1$SI.ac)
+## save to csv
+myfilepath <- paste(my_result_path,"Model_result/plaice_IBTSQ3_run1.csv", sep="")
+write_to_csv(IBTSmodels1, myfilepath)
+
+######################################################################
+########### run2  ####################################################
+######################################################################
+## sweptarea
+mc.cores        <- 1
+
+IBTSmodels2       <- list()
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0) ## exclude NA in sweptarea
+IBTSmodels2$SI.ac <- getSurveyIdx(dd,
+                              ages=agesQ3,
+                              myids=grid.IBTSQ3[[3]],
+                              cutOff=0.15,
+                              fam="LogNormal",
+                              mc.cores=mc.cores,
+                              modelZ=modelsStatZnoGear2,
+                              modelP=modelsStatPnoGear2)
+
+## save as Rdata
+save(IBTSmodels2, mydQ.IBTSQ3, agesQ3, grid.IBTSQ3, file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run2.RData", sep="")) 
+AIC.surveyIdx(IBTSmodels2$SI.ac)
+## save to csv
+myfilepath <- paste(my_result_path,"Model_result/plaice_IBTSQ3_run2.csv", sep="")
+write_to_csv(IBTSmodels2, myfilepath)
+
+## write to dat file
+exportSI(IBTSmodels2$SI.ac$idx,agesQ3,survey_year,toy=mean(mydQ.IBTSQ3[[2]]$timeOfYear,na.rm=TRUE),
+         file=paste(my_result_path, "Model_result/indices_", mysurvey,"_WGNSSK_", work_year, "_stationary_exclude_NEarea.dat", sep=""),
+         nam=paste("NS Plaice ; Last age is plus group, calculated",Sys.time()))
+
+
+######################################################################
+########### compare different runs  ####################################################
+######################################################################
+res1     <- read.csv(paste(my_result_path,"Model_result/plaice_IBTSQ3_run1.csv", sep=""))
+res1$run <- "haulduration"
+res2     <- read.csv(paste(my_result_path,"Model_result/plaice_IBTSQ3_run2.csv", sep=""))
+res2$run <- "sweptarea"
+
+res      <- rbind(res1, res2)
+res$age[res$age=="10"] <- "10+"
+res$age <- factor(res$age, levels=c(as.character(0:9),"10+"))
+
+## plot
+f1  <- ggplot(res, aes(x=year, y=data, group=factor(run), color=factor(run))) +
+  geom_line(size=1) +
+  #scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  scale_x_continuous(name="", breaks=unique(res$year), minor_breaks = unique(res$year), labels=unique(res$year)) +
+  ggtitle("IBTSQ3") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+
+```
+
+
+## IBTSQ3 indices test runs: north-western area
+
+```{r aa, echo=T, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=6, fig.width=10, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+
+load(paste(mydatapath, "Data/plaiceIBTSQ3_", work_year, ".RData", sep=""))
+
+dAll <- addSpectrum(dAll,cm.breaks=seq(0,spectrumMax,by=cmSize))
+
+
+## impute missing depths
+summary(dAll$Depth)
+dmodel <- gam(log(Depth) ~ s(lon,lat,k=200),data=dAll[[2]])
+sel    <- subset(dAll,is.na(Depth))
+sel$Depth <- 0; ## Guard against NA-error
+dAll$Depth[is.na(dAll$Depth)] <- exp(predict(dmodel,newdata=sel[[2]]))
+dmodel <- NULL
+sel    <- NULL
+gc()
+
+## select area, month>6, month<10
+## note: maybe you need to use ICES_area instead of ICESAREA, depends on the shapefile
+table(dAll[[2]]$ICESAREA)
+# this is the code to use: the correct shapefile with IIIa20 identified
+dQ3  <- subset(dAll,ICESAREA %in% as.character(c("IIIa20","IVa","IVb","IVc")), Month>6, Month<10)
+table(dQ3[[2]]$ICESAREA)
+#this is the code if we use the old shapefile
+#dQ3 <- subset(dAll,ICES_area %in% as.character(c("IIIa","IVa","IVb","IVc")), Month>6, Month<10)
+
+## Calculate total biomass by haul and add to HH-records
+dQ3      <- addWeightByHaul(dQ3)
+
+
+## Year subsetting 
+dQ3      <- subset(dQ3,Year %in% survey_year)
+
+## exclude singly year data in FR and NL 
+dQ3      <- subset(dQ3,!( Country %in% c("NL", "FR")))
+
+
+
+## subset data in north eastern area
+aa      <- subset(dQ3,(lon>-0.7 & lon<5 & lat>58.24 & lat<62))
+bb <- aa[[2]]
+nrow(bb)  ## number of hauls
+table(bb$Year, bb$Country)
+## abundance at length, a lot?
+hist(bb$HaulWgt)
+## an outlier, 72373.93 kilo in one haul in 2019
+bb <- bb[bb$HaulWgt<5000,]
+hist(bb$HaulWgt)
+mean(bb$HaulWgt)
+median(bb$HaulWgt)
+xtabs(!is.na(Age)~Year+Age,aa[[1]])
+cc      <- subset(dQ3,!(lon>-0.7 & lon<5 & lat>58.24 & lat<62))
+cc <- cc[[2]]
+cc <- cc[cc$HaulWgt<1000,]
+hist(cc$HaulWgt)
+mean(cc$HaulWgt)
+median(cc$HaulWgt)
+## include all area, do not exclude the box
+## Area subsetting: for both BTS and IBTS: 
+#The precision of survey indices is likely to drop if large areas with nearly zero densities are included.
+#Therefore the North-western part of the North Sea has been excluded from the index calculations.
+#This was done for both Q1 and Q3 data.
+#dQ3      <- subset(dQ3,!(lon>-0.7 & lon<5 & lat>58.24 & lat<62))
+
+
+
+## select subset of IBTS 
+mydQ     <-  dQ3
+
+## make dAll, to estimate alk
+mydQ.IBTSQ3 <- mydQ
+
+save(mydQ.IBTSQ3, file=paste(mydatapath,"Data/IBTS_Q3_",work_year, "_processed_include_NEarea.RData", sep=""))
+
+
+load(file=paste(mydatapath, "Data/BTS_",work_year, "_processed.RData", sep=""))
+load(file=paste(mydatapath, "Data/IBTS_Q3_",work_year, "_processed_include_NEarea.RData", sep=""))
+
+## combine BTS and IBTSQ3
+dAll      <- c(mydQ.BTS,mydQ.IBTSQ3)
+
+save(dAll,mydQ.BTS,mydQ.IBTSQ3, file=paste(mydatapath, "Data/BTS_IBTS_Q3_",work_year, "_processed_include_NEarea.RData", sep=""))
+
+
+mysurvey       <- "IBTSQ3"
+res            <- run_alk("BTS+IBTSQ3")
+
+mydQ.IBTSQ3      <- res$mydd
+mydQ.IBTSQ3[[2]] <- subset(mydQ.IBTSQ3[[2]],Survey=="NS-IBTS")
+mydQ.IBTSQ3[[3]] <- subset(mydQ.IBTSQ3[[3]],Survey=="NS-IBTS")
+
+## in 2019 the grid size is 674 length(grid.IBTSQ3[[1]]), since 2020, the getGrid function is changed, so we need to increase nLon to get a similar size grid, change nLon from 40 to 48 (673 points)
+grid.IBTSQ3      <- getGrid(mydQ.IBTSQ3,nLon=48)
+length(grid.IBTSQ3[[1]])
+## save processed data: res$mydd, res$mygrid
+save(mydQ.IBTSQ3, grid.IBTSQ3, file=paste(mydatapath,"Data/plaice_", mysurvey, "_",work_year, "_alk_processed_include_NEarea.RData", sep=""))
+
+
+## read swept area assessment output
+## IBTSQ3
+sw    <- read.csv("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/swept_area/IBTS_SweptAreaAssessmentOutput_2021-09-28 11_06_07.csv", stringsAsFactors = FALSE)
+myvar <- c("Survey", "Quarter", "Country", "Ship", "Gear", "StNo", "HaulNo","Year", "Month", "Day" )
+mydQ.IBTSQ3[[2]]$Quarter <- as.character(mydQ.IBTSQ3[[2]]$Quarter)
+mydQ.IBTSQ3[[2]]$Ship    <- as.character(mydQ.IBTSQ3[[2]]$Ship)
+mydQ.IBTSQ3[[2]]$Gear    <- as.character(mydQ.IBTSQ3[[2]]$Gear)
+mydQ.IBTSQ3[[2]]$Year    <- as.character(mydQ.IBTSQ3[[2]]$Year)
+nrow(mydQ.IBTSQ3[[2]])
+mydQ.IBTSQ3[[2]]         <- merge(mydQ.IBTSQ3[[2]], sw[,c(myvar, "SweptAreaWSKM2")], by=myvar, all.x=T) ## for plaice using windspred area
+nrow(mydQ.IBTSQ3[[2]])
+names(mydQ.IBTSQ3[[2]])[names(mydQ.IBTSQ3[[2]]) == "SweptAreaWSKM2"] <- "SweptArea"
+summary(mydQ.IBTSQ3[[2]]$SweptArea)
+sum(mydQ.IBTSQ3[[2]]$SweptArea==0, na.rm=T)
+mydQ.IBTSQ3[[2]]$Year[mydQ.IBTSQ3[[2]]$SweptArea==0]
+
+## save processed data: res$mydd, res$mygrid
+save(mydQ.IBTSQ3, grid.IBTSQ3, file=paste(mydatapath, "Data/plaice_", mysurvey, "_",work_year, "_alk_swept_processed_include_NEarea.RData", sep=""))
+
+
+#######################
+## Model formulae: swept area
+#######################
+
+## use formula without gear, coz IBTS has only "GOV" gear type
+## Stationary model
+modelsStatZnoGear2 <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecZ[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+modelsStatPnoGear2 <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecP[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+## non-Stationary model
+modelsNonStatnoGear2     <- rep("Year+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+
+######################################################################
+########### run3  ####################################################
+######################################################################
+## sweptarea +minclude NW area
+mc.cores        <- 1
+
+IBTSmodels3       <- list()
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0) ## exclude NA in sweptarea
+IBTSmodels3$SI.ac <- getSurveyIdx(dd,
+                              ages=agesQ3,
+                              myids=grid.IBTSQ3[[3]],
+                              cutOff=0.15,
+                              fam="LogNormal",
+                              mc.cores=mc.cores,
+                              modelZ=modelsStatZnoGear2,
+                              modelP=modelsStatPnoGear2)
+
+## save as Rdata
+save(IBTSmodels3, mydQ.IBTSQ3, agesQ3, grid.IBTSQ3, file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run3.RData", sep="")) 
+## save to csv
+myfilepath <- paste(my_result_path,"Model_result/plaice_IBTSQ3_run3.csv", sep="")
+write_to_csv(IBTSmodels3, myfilepath)
+
+
+######################################################################
+########### compare different runs  ####################################################
+######################################################################
+
+res2     <- read.csv(paste(my_result_path,"Model_result/plaice_IBTSQ3_run2.csv", sep=""))
+res2$run <- "exclude NW region"
+res3     <- read.csv(paste(my_result_path,"Model_result/plaice_IBTSQ3_run3.csv", sep=""))
+res3$run <- "include NW region"
+
+res      <- rbind(res2, res3)
+res$age[res$age=="10"] <- "10+"
+res$age <- factor(res$age, levels=c(as.character(0:9),"10+"))
+
+## plot
+f1  <- ggplot(res, aes(x=year, y=data, group=factor(run), color=factor(run))) +
+  geom_line(size=1) +
+  #scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  scale_x_continuous(name="", breaks=unique(res$year), minor_breaks = unique(res$year), labels=unique(res$year)) +
+  ggtitle("IBTSQ3") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+
+```
+
+## IBTSQ3 indices test runs: vessel effect
+
+```{r 04_extract_indices_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   3. IBTS-Q3 indices              ########################
+########################################################################
+
+## comments from Casper
+## comparing country and ship, better use ship
+##Ship effects are sometimes a good idea to include, but not always. Like with gear effects you need a lot of samples and good spatio-temporal overlap between vessels to get good estimates. If the ship effects are very uncertain then it's usually better to assume no ship effect. So I would recommend to try both with and without ship effects.
+
+
+
+mysurvey       <- "IBTSQ3"
+## load data after applying alk
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_", work_year, "_alk_swept_processed_exclude_NEarea.RData", sep="")) ## res$mydd, res$mygrid
+
+
+## check spatial-temporal distribution of ship
+aa<- mydQ.IBTSQ3[[2]]
+table(aa$Ship, aa$Year)
+temp<-aggregate(haul.id~ Ship+Year+Roundfish, FUN=length, data=aa)
+names(temp)[4] <- "NO_haul"
+temp$Roundfish <- paste0("RA ", temp$Roundfish)
+
+f1 <- ggplot(temp, aes(x=Year, y=Ship, fill = NO_haul)) +
+  geom_tile()+
+  ggtitle("IBTSQ3: spatial-temporal coverage of ships") 
+f2 <- facet(f1, facet.by = c("Roundfish"), ncol = 2, scales = "fixed", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("Ship")+ xlab("Year") 
+
+plot(f2)  
+
+
+## Make ctime : a numeric time variable 
+mydQ.IBTSQ3$ctime     <- as.numeric(as.character(mydQ.IBTSQ3$Year))
+
+
+agesQ3         <- 0:10
+## define survey year
+survey_year    <- 1996:last_data_year
+
+
+#######################
+## Model formulae: swept area + ship
+#######################
+
+## use formula without gear, coz IBTS has only "GOV" gear type
+## Stationary model
+modelsStatnoGear2 <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecZ[a])+s(Depth,bs='ts',k=6 )+ s(Ship, bs='re') + offset(log(SweptArea))",length(agesQ3))
+
+## non-Stationary model
+modelsNonStatnoGear2     <- rep("Year+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+
+######################################################################
+########### run4  ####################################################
+######################################################################
+## 
+mc.cores        <- 1
+
+IBTSmodels4       <- list()
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0) ## exclude NA in sweptarea
+dd[[3]]$Ship <- as.factor(dd[[3]]$Ship)
+dd[[2]]$Ship <- factor(dd[[2]]$Ship, levels=levels(dd[[3]]$Ship))
+IBTSmodels4$SI.ac <- getSurveyIdx(dd,
+                              ages=agesQ3,
+                              myids=grid.IBTSQ3[[3]],
+                              cutOff=0.15,
+                              fam="LogNormal",
+                              mc.cores=mc.cores,
+                              modelZ=modelsStatnoGear2,
+                              modelP=modelsStatnoGear2)
+AIC.surveyIdx(IBTSmodels4$SI.ac)
+
+## save as Rdata
+save(IBTSmodels4, mydQ.IBTSQ3, agesQ3, grid.IBTSQ3, file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run4.RData", sep="")) 
+## save to csv
+myfilepath <- paste(my_result_path,"Model_result/plaice_IBTSQ3_run4.csv", sep="")
+write_to_csv(IBTSmodels4, myfilepath)
+
+######################################################################
+########### compare different runs  ####################################################
+######################################################################
+
+res2     <- read.csv(paste(my_result_path,"Model_result/plaice_IBTSQ3_run2.csv", sep=""))
+res2$run <- "no-ship"
+res4     <- read.csv(paste(my_result_path,"Model_result/plaice_IBTSQ3_run4.csv", sep=""))
+res4$run <- "ship"
+
+res      <- rbind(res2, res4)
+res$age[res$age=="10"] <- "10+"
+res$age <- factor(res$age, levels=c(as.character(0:9),"10+"))
+
+## plot
+f1  <- ggplot(res, aes(x=year, y=data, group=factor(run), color=factor(run))) +
+  geom_line(size=1) +
+  #scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  scale_x_continuous(name="", breaks=unique(res$year), minor_breaks = unique(res$year), labels=unique(res$year)) +
+  ggtitle("IBTSQ3") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+
+dd[[2]]$Ship <- factor(dd[[2]]$Ship)
+aa <- leaveout.surveyIdx(IBTSmodels4$SI.ac, dd, grid.IBTSQ3,dd[[2]]$Ship)
+plot(aa)
+
+
+```
+
+## IBTSQ3 leave-one-ship-out
+
+```{r 04_extract_indices_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+## load model result: run4: time-invariant and vessel effect
+load(file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run4.RData", sep=""))
+
+
+## leave-one-Ship-out analysis
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0)
+aa <- leaveout.surveyIdx(IBTSmodels4$SI.ac, dd, grid.IBTSQ3,dd[[2]]$Ship)
+plot(aa)
+
+save(aa, dd, agesQ3, grid.IBTSQ3, file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run4_leave_one_shit_out.RData", sep=""))
+
+mymodel <- IBTSmodels4$SI.ac
+idx     <- mymodel$idx
+idx.m   <- melt(idx,value.name = "data", varnames = c("year","age"))
+lo      <- mymodel$lo
+colnames(lo) <- colnames(idx)
+rownames(lo) <- rownames(idx)
+lo      <- melt(lo,value.name = "lo", varnames = c("year","age"))
+up      <- mymodel$up
+colnames(up) <- colnames(idx)
+rownames(up) <- rownames(idx)
+up      <- melt(up,value.name = "up", varnames = c("year","age"))
+idx.res <- cbind(idx.m,lo$lo,up$up)
+colnames(idx.res)[4] <- "lo" 
+colnames(idx.res)[5] <- "up"
+idx.res$Ship <- "all"
+datall  <- idx.res
+for (i in 1:length(names(aa))) {
+  idx     <- aa[[i]]$idx
+  idx.m   <- melt(idx,value.name = "data", varnames = c("year","age"))
+  lo      <- aa[[i]]$lo  ## all zero
+  colnames(lo) <- colnames(idx)
+  rownames(lo) <- rownames(idx)
+  lo      <- melt(lo,value.name = "lo", varnames = c("year","age"))
+  up      <- aa[[i]]$up
+  colnames(up) <- colnames(idx)
+  rownames(up) <- rownames(idx)
+  up      <- melt(up,value.name = "up", varnames = c("year","age"))
+  idx.res <- cbind(idx.m,lo$lo,up$up)
+  colnames(idx.res)[4] <- "lo" 
+  colnames(idx.res)[5] <- "up"
+  idx.res$Ship <- names(aa)[i]
+  
+  datall <- rbind(datall, idx.res)
+  
+}
+datall$age  <- as.character(datall$age)
+datall$age[datall$age=="10"] <- "10+"
+datall$age <- factor(datall$age, levels=c(as.character(0:9),"10+"))
+
+## plot
+f1  <- ggplot(datall, aes(x=year, y=data, group=factor(Ship), color=factor(Ship))) +
+  geom_line(size=1) +
+  geom_line(data=datall[datall$Ship == "all",],aes(x=year, y=data), size=1, color="black") +
+  #geom_ribbon(aes(ymin = lo, ymax = up,fill=Country),alpha = 0.3, colour = NA) +
+  #scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  #scale_colour_brewer(palette = "Set1") +
+  #scale_fill_brewer(palette = "Set1") +
+  #scale_colour_manual(values =colset) + 
+  scale_x_continuous(name="", breaks=unique(datall$year), minor_breaks = unique(datall$year), labels=unique(datall$year)) +
+  ggtitle("IBTSQ3: leave-one-ship-out") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+```
+
+## IBTSQ3 indices test runs: time-varying spatial effect
+
+```{r bb, echo=T, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=6, fig.width=10, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+
+mysurvey       <- "IBTSQ3"
+## load data after applying alk
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_", work_year, "_alk_swept_processed_exclude_NEarea.RData", sep="")) ## res$mydd, res$mygrid
+
+
+## time varying spatial effect 
+
+mc.cores        <- 1
+
+IBTSmodelsNonStat       <- list()
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0) ## exclude NA in sweptarea
+IBTSmodelsNonStat$SI.ac <- getSurveyIdx(dd,
+                              ages=agesQ3,
+                          myids=grid.IBTSQ3[[3]],
+                              cutOff=0.15,
+                              fam="LogNormal",
+                              mc.cores=mc.cores,
+                              modelZ=modelsNonStatnoGear2,
+                              modelP=modelsNonStatnoGear2)
+
+AIC.surveyIdx(IBTSmodelsNonStat$SI.ac)
+save(IBTSmodelsNonStat, mydQ.IBTSQ3, agesQ3, grid.IBTSQ3, file=paste(my_result_path,"Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_Nonstationary_exclude_NEarea.RData", sep="")) 
+
+## write to dat file
+exportSI(IBTSmodelsNonStat$SI.ac$idx,agesQ3,survey_year,toy=mean(mydQ.IBTSQ3[[2]]$timeOfYear,na.rm=TRUE),
+         file=paste(my_result_path, "Model_result/indices_", mysurvey,"_WGNSSK_", work_year, "_Nonstationary_exclude_NEarea.dat", sep=""),
+         nam=paste("NS Plaice ; Last age is plus group, calculated",Sys.time()))
+
+## save to csv wide
+write.csv(IBTSmodelsNonStat$SI.ac$idx, file=paste(my_result_path, "Model_result/","indices_", mysurvey,"_WGNSSK_", work_year, "_Nonstationary_wide_exclude_NEarea.csv", sep=""))
+
+## write to csv file
+myfilepath <- paste(my_result_path, "Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_Nonstationary_exclude_NEarea.csv", sep="")
+write_to_csv(IBTSmodelsNonStat, myfilepath)
+
+
+######################################################################
+########### compare different runs  ####################################################
+######################################################################
+res2     <- read.csv(paste(my_result_path,"Model_result/result_BTSQ3_WGNSSK_2021_stationary.csv", sep=""))
+res2$run <- "time-invariant"
+res3     <- read.csv(paste(my_result_path,"Model_result/result_IBTSQ3_WGNSSK_2021_Nonstationary_exclude_NEarea.csv", sep=""))
+res3$run <- "time-varying"
+
+res      <- rbind(res2, res3)
+res$age[res$age=="10"] <- "10+"
+res$age <- factor(res$age, levels=c(as.character(0:9),"10+"))
+
+## plot
+f1  <- ggplot(res, aes(x=year, y=data, group=factor(run), color=factor(run))) +
+  geom_line(size=1) +
+  #scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  scale_x_continuous(name="", breaks=unique(res$year), minor_breaks = unique(res$year), labels=unique(res$year)) +
+  ggtitle("IBTSQ3") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+
+```
+
+## IBTSQ3 indices test runs: time-varying spatial effect
+
+```{r bb, echo=T, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=6, fig.width=10, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+
+mysurvey       <- "IBTSQ3"
+## load data after applying alk
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_", work_year, "_alk_swept_processed_exclude_NEarea.RData", sep="")) ## res$mydd, res$mygrid
+
+
+## non-Stationary model
+modelsNonStatnoGear2     <- rep("Year+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+ offset(log(SweptArea))",length(agesQ3))
+
+## non-Stationary model: with ship effect 
+## but does not work
+modelsNonStatnoGear2     <- rep("Year+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+ s(Ship, bs='re') +  offset(log(SweptArea))",length(agesQ3))
+
+## time varying spatial effect 
+
+mc.cores        <- 1
+## Make ctime : a numeric time variable 
+mydQ.IBTSQ3$ctime     <- as.numeric(as.character(mydQ.IBTSQ3$Year))
+
+
+IBTSmodelsNonStat       <- list()
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0) ## exclude NA in sweptarea
+IBTSmodelsNonStat$SI.ac <- getSurveyIdx(dd,
+                              ages=agesQ3,
+                          myids=grid.IBTSQ3[[3]],
+                              cutOff=0.15,
+                              fam="LogNormal",
+                              mc.cores=mc.cores,
+                              modelZ=modelsNonStatnoGear2,
+                              modelP=modelsNonStatnoGear2)
+
+AIC.surveyIdx(IBTSmodelsNonStat$SI.ac)
+save(IBTSmodelsNonStat, mydQ.IBTSQ3, agesQ3, grid.IBTSQ3, file=paste(my_result_path,"Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_Nonstationary_exclude_NEarea.RData", sep="")) 
+
+## write to dat file
+exportSI(IBTSmodelsNonStat$SI.ac$idx,agesQ3,survey_year,toy=mean(mydQ.IBTSQ3[[2]]$timeOfYear,na.rm=TRUE),
+         file=paste(my_result_path, "Model_result/indices_", mysurvey,"_WGNSSK_", work_year, "_Nonstationary_exclude_NEarea.dat", sep=""),
+         nam=paste("NS Plaice ; Last age is plus group, calculated",Sys.time()))
+
+## save to csv wide
+write.csv(IBTSmodelsNonStat$SI.ac$idx, file=paste(my_result_path, "Model_result/","indices_", mysurvey,"_WGNSSK_", work_year, "_Nonstationary_wide_exclude_NEarea.csv", sep=""))
+
+## write to csv file
+myfilepath <- paste(my_result_path, "Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_Nonstationary_exclude_NEarea.csv", sep="")
+write_to_csv(IBTSmodelsNonStat, myfilepath)
+
+
+######################################################################
+########### compare different runs  ####################################################
+######################################################################
+res2     <- read.csv(paste(my_result_path,"Model_result/result_BTSQ3_WGNSSK_2021_stationary.csv", sep=""))
+res2$run <- "time-invariant"
+res3     <- read.csv(paste(my_result_path,"Model_result/result_IBTSQ3_WGNSSK_2021_Nonstationary_exclude_NEarea.csv", sep=""))
+res3$run <- "time-varying"
+
+res      <- rbind(res2, res3)
+res$age[res$age=="10"] <- "10+"
+res$age <- factor(res$age, levels=c(as.character(0:9),"10+"))
+
+## plot
+f1  <- ggplot(res, aes(x=year, y=data, group=factor(run), color=factor(run))) +
+  geom_line(size=1) +
+  #scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  scale_x_continuous(name="", breaks=unique(res$year), minor_breaks = unique(res$year), labels=unique(res$year)) +
+  ggtitle("IBTSQ3") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+
+```
+
+
+## (not used) IBTSQ3 leave-one-country-out
+
+```{r 04_extract_indices_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+## load model result: run2
+load(file=paste(my_result_path, "Model_result/result_IBTSQ3_WGNSSK_2021_stationary_exclude_NEarea.RData", sep=""))
+
+
+## leave-one-country-out analysis
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0)
+aa <- leaveout.surveyIdx(IBTSmodels$SI.ac, dd, grid.IBTSQ3,dd[[2]]$Country)
+plot(aa)
+
+save(aa, dd, agesQ3, grid.IBTSQ3, file=paste(my_result_path, "Model_result/plaice_IBTSQ3_stationary_exclude_NEarea_leave_one_country_out.RData", sep=""))
+
+mymodel <- IBTSmodels$SI.ac
+idx     <- mymodel$idx
+idx.m   <- melt(idx,value.name = "data", varnames = c("year","age"))
+lo      <- mymodel$lo
+colnames(lo) <- colnames(idx)
+rownames(lo) <- rownames(idx)
+lo      <- melt(lo,value.name = "lo", varnames = c("year","age"))
+up      <- mymodel$up
+colnames(up) <- colnames(idx)
+rownames(up) <- rownames(idx)
+up      <- melt(up,value.name = "up", varnames = c("year","age"))
+idx.res <- cbind(idx.m,lo$lo,up$up)
+colnames(idx.res)[4] <- "lo" 
+colnames(idx.res)[5] <- "up"
+idx.res$Country <- "all"
+datall  <- idx.res
+for (i in 1:length(names(aa))) {
+  idx     <- aa[[i]]$idx
+  idx.m   <- melt(idx,value.name = "data", varnames = c("year","age"))
+  lo      <- aa[[i]]$lo  ## all zero
+  colnames(lo) <- colnames(idx)
+  rownames(lo) <- rownames(idx)
+  lo      <- melt(lo,value.name = "lo", varnames = c("year","age"))
+  up      <- aa[[i]]$up
+  colnames(up) <- colnames(idx)
+  rownames(up) <- rownames(idx)
+  up      <- melt(up,value.name = "up", varnames = c("year","age"))
+  idx.res <- cbind(idx.m,lo$lo,up$up)
+  colnames(idx.res)[4] <- "lo" 
+  colnames(idx.res)[5] <- "up"
+  idx.res$Country <- names(aa)[i]
+  
+  datall <- rbind(datall, idx.res)
+  
+}
+datall$age  <- as.character(datall$age)
+datall$age[datall$age=="10"] <- "10+"
+datall$age <- factor(datall$age, levels=c(as.character(0:9),"10+"))
+
+## plot
+f1  <- ggplot(datall, aes(x=year, y=data, group=factor(Country), color=factor(Country))) +
+  geom_line(size=1) +
+  geom_line(data=datall[datall$Country == "all",],aes(x=year, y=data), size=1, color="black") +
+  #geom_ribbon(aes(ymin = lo, ymax = up,fill=Country),alpha = 0.3, colour = NA) +
+  #scale_linetype_manual(values=c("solid", "dotted", "dotted"))+
+  #scale_colour_brewer(palette = "Set1") +
+  #scale_fill_brewer(palette = "Set1") +
+  scale_colour_manual(values =colset) + 
+  scale_x_continuous(name="", breaks=unique(res$year), minor_breaks = unique(res$year), labels=unique(res$year)) +
+  ggtitle("IBTSQ3: leave-one-country-out") 
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 14, angle=0), panel.labs.font.x = list(size = 14)) +
+  theme(plot.title = element_text(color="black", size=16, face="bold"), 
+        legend.position = "bottom", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))+
+  ylab("indices")+ xlab("") 
+  #scale_x_continuous(name="", breaks=2005:2018, labels=unique(dat$Year))
+plot(f2)  
+```
+
+
+## IBTSQ3 indices final
+
+```{r 04_extract_indices_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   3. IBTS-Q3 indices              ########################
+########################################################################
+
+mysurvey       <- "IBTSQ3"
+## load data after applying alk
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_", work_year, "_alk_swept_processed_exclude_NEarea.RData", sep="")) ## res$mydd, res$mygrid
+
+## Make ctime : a numeric time variable 
+mydQ.IBTSQ3$ctime     <- as.numeric(as.character(mydQ.IBTSQ3$Year))
+
+
+agesQ3         <- 0:10
+## define survey year
+survey_year    <- 1996:last_data_year
+
+#######################
+## Model formulae: swept area, ship
+#######################
+
+## Stationary model
+modelsStatnoGear2 <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecZ[a])+s(Depth,bs='ts',k=6 )+ s(Ship, bs='re') + offset(log(SweptArea))",length(agesQ3))
+
+####################
+## IBTS-Q3   ------IBTSQ3 indices, same as run5
+####################
+mc.cores        <- 1
+
+IBTSmodels       <- list()
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0) ## exclude NA in sweptarea
+IBTSmodels$SI.ac <- getSurveyIdx(dd,
+                              ages=agesQ3,
+                          myids=grid.IBTSQ3[[3]],
+                              cutOff=0.15,
+                              fam="LogNormal",
+                              mc.cores=mc.cores,
+                              modelZ=modelsStatnoGear2,
+                              modelP=modelsStatnoGear2)
+
+save(IBTSmodels, mydQ.IBTSQ3, agesQ3, grid.IBTSQ3, file=paste(my_result_path,"Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_stationary_exclude_NEarea.RData", sep="")) 
+
+AIC.surveyIdx(IBTSmodels$SI.ac)
+
+## write to dat file
+exportSI(IBTSmodels$SI.ac$idx,agesQ3,survey_year,toy=mean(mydQ.IBTSQ3[[2]]$timeOfYear,na.rm=TRUE),
+         file=paste(my_result_path, "Model_result/indices_", mysurvey,"_WGNSSK_", work_year, "_stationary_exclude_NEarea.dat", sep=""),
+         nam=paste("NS Plaice ; Last age is plus group, calculated",Sys.time()))
+
+## save to csv wide
+write.csv(IBTSmodels$SI.ac$idx, file=paste(my_result_path, "Model_result/","indices_", mysurvey,"_WGNSSK_", work_year, "_stationary_wide_exclude_NEarea.csv", sep=""))
+
+## write to csv file
+myfilepath <- paste(my_result_path, "Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_stationary_exclude_NEarea.csv", sep="")
+write_to_csv(IBTSmodels, myfilepath)
+
+
+library(FLCore) 
+library(FLAssess)
+library(ggplotFL)
+indices  <- readFLIndices(paste(my_result_path,"Model_result/indices_IBTSQ3_WGNSSK_2021_stationary_exclude_NEarea.dat", sep=""), na.strings="-1")
+
+## cohort plot
+mydat <- as.data.frame(index(indices[[1]]), cohort=TRUE)
+myyear <- unique(mydat$year)
+mydat$cohort <- as.numeric(mydat$cohort)
+f1 <- ggplot(mydat, aes(x=as.numeric(cohort), y=log(data), group=factor(age), color=factor(age))) +
+  geom_line() +
+  #scale_color_distiller(palette="Spectral") +
+  geom_point(colour='white', size=5) +
+  geom_text(aes(label=age)) +
+  ggtitle("indices by cohort")+
+  theme_bw() +
+  xlab("Cohort") + ylab("") +
+  scale_x_continuous(name="", breaks=myyear, labels=myyear, limits=c(min(myyear), max(myyear))) +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "right", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0))
+plot(f1)
+
+ggplot(mydat, aes(x=year, y=log(data), group=factor(age), color=factor(age))) +
+  geom_point(colour='white', size=5) + 
+  geom_text(aes(label=age)) +
+  geom_line(data=mydat, aes(x=year, y=log(data), group=factor(cohort)), color="black") +
+  theme_bw() +
+  xlab("Cohort") + ylab("") +
+  scale_x_continuous(name="", breaks=myyear, labels=myyear, limits=c(min(myyear), max(myyear))) +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "right", legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=10, face="plain"),
+        axis.text.x = element_text(color = "black", size = 14, angle = 90),
+        axis.text.y = element_text(color = "black", size = 14, angle = 0))
+
+
+cohcorrplot(FLCohort(index(indices[[1]])))
+
+plotInternalConsistency(indices[["NSIBTSQ3"]], mark.last=T)
+```
+
+## IBTS model diagnosis
+
+```{r 04_DYFS_diagnosis, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+load(file=paste(my_result_path, "Model_result/result_IBTSQ3_WGNSSK_2021_stationary_exclude_NEarea.RData", sep=""))
+
+
+myfit   <-IBTSmodels$SI.ac
+mydat   <- mydQ.IBTSQ3
+mygridd <- grid.IBTSQ3[[3]]
+myage       <- 0:10
+
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(2,2)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="residuals",plotByAge=FALSE)
+
+
+
+AIC.surveyIdx(IBTSmodelsNonStat$SI.ac)
+surveyIdxPlots(IBTSmodelsNonStat$SI.ac,mydQ.IBTSQ3,cols=myage+1,myids=grid.IBTSQ3[[3]],
+               par=list(mfrow=c(2,2)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="residuals",plotByAge=FALSE)
+
+
+mymod <- IBTSmodels2$SI.ac
+# Randomized quantile residuals
+aa <- residuals(mymod, a = 1)  ## age group1 = age0
+qqnorm(aa, pch = 1, frame = FALSE)
+qqline(aa, col = "steelblue", lwd = 2)
+
+mymod <- IBTSmodelsNonStat$SI.ac
+# Randomized quantile residuals
+aa <- residuals(mymod, a = 1)  ## age group1 = age0
+qqnorm(aa, pch = 1, frame = FALSE)
+qqline(aa, col = "steelblue", lwd = 2)
+
+## internal consistency
+internalCons(myfit$idx, do.plot=TRUE)
+
+## catch curves
+
+## index with CI
+#pdf(paste(plot_path, mysurvey, "_by_age_indices_", last_data_year,".pdf", sep=""))
+#png(filename = paste(plot_path, mysurvey, "_by_age_indices_", last_data_year,".png", sep=""), width = 800, height = 800)
+
+surveyIdxPlots(myfit,mydat,cols=1:length(myfit$pModels),myids=mygridd,
+               par=list(mfrow=c(2,2)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="index",plotByAge=FALSE)
+
+## some years ended up as zero indices for age 2-3, in the plots seems it is not plotted and looks like NA
+
+#dev.off()
+
+## residuals per age
+#png(filename = paste(plot_path, mysurvey, "_by_age_residuals_", last_data_year,".png", sep=""), width = 600, height = 600)
+surveyIdxPlots(myfit,mydat,cols=myage+1,myids=mygridd,
+               par=list(mfrow=c(1,2)),legend=FALSE,colors=rev(heat.colors(8)),
+               select="residuals",plotByAge=FALSE)
+#dev.off()
+
+surveyIdxPlots(myfit,mydat,myids=mygridd,,par=list(mfrow=c(2,2),mar=c(4,3,1,1)),select=c("fitVsRes"),plotByAge=FALSE)
+surveyIdxPlots(myfit,mydat,myids=mygridd,,par=list(mfrow=c(3,3),mar=c(4,3,1,1)),select=c("resVsYear"),plotByAge=FALSE)
+surveyIdxPlots(myfit,mydat,myids=mygridd,par=list(mfrow=c(3,3),mar=c(4,3,1,1)),select=c("resVsShip"),plotByAge=FALSE) 
+
+## year effect
+par(mfrow=c(4,2))
+year_list <- c(2003:2019)
+plot(year_list,coef(myfit$zModels[[1]])[2:18], type="o", xlab="year", ylab="year effect", main="Z model")
+plot(year_list,coef(myfit$pModels[[1]])[2:18], type="o", xlab="year", ylab="year effect", main="P model")
+plot(year_list,coef(myfit$zModels[[2]])[2:18], type="o", xlab="year", ylab="year effect", main="Z model")
+plot(year_list,coef(myfit$pModels[[2]])[2:18], type="o", xlab="year", ylab="year effect", main="P model")
+plot(year_list,coef(myfit$zModels[[3]])[2:18], type="o", xlab="year", ylab="year effect", main="Z model")
+plot(year_list,coef(myfit$pModels[[3]])[2:18], type="o", xlab="year", ylab="year effect", main="P model")
+plot(year_list,coef(myfit$zModels[[4]])[2:18], type="o", xlab="year", ylab="year effect", main="Z model")
+plot(year_list,coef(myfit$pModels[[4]])[2:18], type="o", xlab="year", ylab="year effect", main="P model")
+
+## estimated abundance map per age- time invariant model
+## estimated abundance map per age- time invariant model
+if (stationary==TRUE) {
+png(filename = paste("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/plots/IBTSQ3/", mysurvey, "_by_age_abundmap_time_invariant.png", sep=""), width = 600, height = 600)
+addLegend = FALSE
+f1 <- surveyIdxPlots(myfit,mydat,alt.idx=SI.alt,myids=mygridd,par=list(mfrow=c(3,4),mar=c(4,1,1,1)),select=c("map"),plotByAge=FALSE,colors=rev(heat.colors(5)),legend=addLegend)
+print(f1)
+dev.off()
+}
+
+
+if (stationary==FALSE) {
+## estimated abundance map per age, for time-varing model
+ys = as.numeric(as.character(levels(mydat$Year)))
+mapy = min(ys):max(ys)
+for(yy in mapy){
+  addLegend = FALSE
+  png(filename = paste(plot_path, mysurvey, "_by_age_abundmap_time_varying_", yy,".png", sep=""), width = 600, height = 600)
+  
+  f1 <- surveyIdxPlots(myfit,mydat,alt.idx=SI.alt,myids=mygridd,par=list(mfrow=c(3,4),mar=c(4,1,1,1)),select=c("map"),plotByAge=FALSE,colors=rev(heat.colors(5)),legend=addLegend,year=yy)
+  print(f1)
+  dev.off()
+  print(f1)
+}
+}
+
+
+
+# presence-absence
+summary(mymodel$SI.ac$zModels[[i]])
+plot(mymodel$SI.ac$zModels[[i]])
+gam.check(mymodel$SI.ac$zModels[[i]] )
+vis.gam(mymodel$SI.ac$zModels[[i]] , view=c("lon", "lat"), plot.type="contour")  ## heatmap, white means higher value
+vis.gam(mymodel$SI.ac$zModels[[i]] , view=c("Depth", "Year"), plot.type="contour")
+
+# positive
+summary(mymodel$SI.ac$pModels[[i]])
+plot(mymodel$SI.ac$pModels[[i]])
+gam.check(mymodel$SI.ac$pModels[[i]] )
+vis.gam(mymodel$SI.ac$pModels[[i]] , view=c("lon", "lat"), plot.type="contour")  ## heatmap, white means higher value
+vis.gam(mymodel$SI.ac$pModels[[i]] , view=c("Depth", "Year"), plot.type="contour")
+
+
+## model intepretation
+
+#2*BTSmodels$SI.ac$edfs - BTSmodels$SI.ac$logLik*2
+
+## surveyIdx output
+SI$idx #index per age per year
+SI$lo #lower limit per age per year
+SI$up #upper limit per age per year
+SI$zModels #model output for zeroes models per age
+SI$pModels #model output for counts models per age
+SI$gPreds #last year's predicted values per grid cell, one list for each age group
+SI$pData[[2]] #not sure what this is
+SI$gPreds2 #predicted values of all years by age group
+
+## cohort plot and internal consistencey, in previous section
+
+```
+
+
+## IBTSQ3 retrospective 
+
+```{r , echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=T, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+## load model result: run4, with ship
+load(file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run2.RData", sep=""))
+
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0)
+## use revised retro, every year, re-level the ship, because some ships do not exist in previous years
+myretro <- retro.surveyIdx.ship(IBTSmodels4$SI.ac, dd, grid.IBTSQ3, npeels = 5, predD = NULL)
+plot(myretro)
+
+## save as Rdata
+save(myretro, file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run4_retro.RData", sep="")) 
+```
+
+
+# 6 BTS/IBTSQ3 indices by subarea
+
+```{r , echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=T, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+
+## IBTSQ3
+
+## load model result: run2
+#load(file=paste(my_result_path, "Model_result/plaice_IBTSQ3_run2.RData", sep=""))
+
+load(file=paste(my_result_path,"Model_result/result_IBTSQ3_WGNSSK_2021_Nonstationary_exclude_NEarea.RData", sep=""))
+
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0)
+table(dd[[2]]$Roundfish, useNA="always")
+dd <- subset(dd, !is.na(Roundfish))
+myroundfish <- sort(unique(dd[[2]]$Roundfish))
+dd[[2]]$Year <- factor(dd[[2]]$Year)
+
+datall <- NA
+for (i in 1:length(myroundfish)){
+  idx.sub <- redoSurveyIndex(dd, IBTSmodelsNonStat$SI.ac, myids =  subset(dd, Roundfish == i, haul.id %in% grid.IBTSQ3[[3]])$haul.id, nBoot=1000, predfix=NULL)
+  
+  idx     <- idx.sub$idx
+  idx.m   <- melt(idx,value.name = "data", varnames = c("year","age"))
+  lo      <- idx.sub$lo  ## all zero
+  colnames(lo) <- colnames(idx)
+  rownames(lo) <- rownames(idx)
+  lo      <- melt(lo,value.name = "lo", varnames = c("year","age"))
+  up      <- idx.sub$up
+  colnames(up) <- colnames(idx)
+  rownames(up) <- rownames(idx)
+  up      <- melt(up,value.name = "up", varnames = c("year","age"))
+  idx.res <- cbind(idx.m,lo$lo,up$up)
+  colnames(idx.res)[4] <- "lo" 
+  colnames(idx.res)[5] <- "up"
+  idx.res$Roundfish <- myroundfish[i]
+  
+  datall <- rbind(datall, idx.res)
+}
+datall <- datall[-1,]
+datall$Survey <- "IBTSQ3"
+
+## BTS
+
+## load model result: run2
+#load(file=paste(my_result_path, "Model_result/result_BTSQ3_WGNSSK_2021_stationary.RData", sep=""))
+load(paste(my_result_path, "Model_result/result_BTSQ3_WGNSSK_2021_Nonstationary.RData", sep=""))
+
+dd <- subset(mydQ.BTS, !is.na(SweptArea) & SweptArea!=0)
+table(dd[[2]]$Roundfish, useNA="always")
+dd <- subset(dd, !is.na(Roundfish))
+myroundfish <- sort(unique(dd[[2]]$Roundfish))
+dd[[2]]$Year <- factor(dd[[2]]$Year)
+
+datall1 <- NA
+for (i in 1:length(myroundfish)){
+  idx.sub <- redoSurveyIndex(dd, BTSmodelsNonStat$SI.ac, myids =  subset(dd, Roundfish == i, haul.id %in% grid.BTS[[3]])$haul.id, nBoot=1000, predfix=NULL)
+  
+  idx     <- idx.sub$idx
+  idx.m   <- melt(idx,value.name = "data", varnames = c("year","age"))
+  lo      <- idx.sub$lo  ## all zero
+  colnames(lo) <- colnames(idx)
+  rownames(lo) <- rownames(idx)
+  lo      <- melt(lo,value.name = "lo", varnames = c("year","age"))
+  up      <- idx.sub$up
+  colnames(up) <- colnames(idx)
+  rownames(up) <- rownames(idx)
+  up      <- melt(up,value.name = "up", varnames = c("year","age"))
+  idx.res <- cbind(idx.m,lo$lo,up$up)
+  colnames(idx.res)[4] <- "lo" 
+  colnames(idx.res)[5] <- "up"
+  idx.res$Roundfish <- myroundfish[i]
+  
+  datall1 <- rbind(datall1, idx.res)
+}
+datall1 <- datall1[-1,]
+datall1$Survey <- "BTS"
+datall  <- rbind(datall, datall1)
+table(datall$Survey)
+
+save(datall, file=paste(my_result_path, "BTS_IBTS_subarea_indices_Nonstationary.RData"))
+
+## between survey correlation
+datwide <- reshape(datall, v.names = "data", idvar = c("year", "age", "Roundfish"),timevar = "Survey",direction = "wide")
+datwide$year <- factor(datwide$year)
+datwide$age <- paste0("age", datwide$age)
+datwide$Roundfish <- paste0("RA", datwide$Roundfish)
+f1 <- ggplot(datwide, aes(x=log(data.BTS+1), y=log(data.IBTSQ3+1), color=year)) +
+  geom_point() + 
+  geom_line(size=1, alpha=0.5) +
+  #scale_colour_brewer(palette = "Set1") +
+  #ggtitle(paste(mysurvey, " indices: original scale", sep="")) +
+  theme_bw()+
+  xlab("log(BTS+1)")+ ylab("log(IBTS+1)") +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "bottom", 
+        legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=15, face="plain"),
+        axis.text.x = element_text(color = "black", size = 12, angle = 90),
+        axis.text.y = element_text(color = "black", size = 12, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))
+f2 <- facet(f1, facet.by = c("Roundfish","age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 12, angle=0), panel.labs.font.x = list(size = 12))
+print(f2)
+
+aa <- read.csv("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/Model_result/result_BTSQ3_WGNSSK_2021_Nonstationary.csv")
+bb <- read.csv("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/Model_result/result_IBTSQ3_WGNSSK_2021_Nonstationary_exclude_NEarea.csv")
+aa$survey <- "BTS"
+bb$survey <- "IBTSQ3"
+aa <- rbind(aa,bb)
+aa <- reshape(aa, v.names = "data", idvar = c("year", "age"),timevar = "survey",direction = "wide")
+f1 <- ggplot(aa, aes(x=log(data.BTS+1), y=log(data.IBTSQ3+1), color=year)) +
+  geom_point() + 
+  geom_line(size=1, alpha=0.5) +
+  #scale_colour_brewer(palette = "Set1") +
+  #ggtitle(paste(mysurvey, " indices: original scale", sep="")) +
+  theme_bw()+
+  xlab("log(BTS+1)")+ ylab("log(IBTS+1)") +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "bottom", 
+        legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=15, face="plain"),
+        axis.text.x = element_text(color = "black", size = 12, angle = 90),
+        axis.text.y = element_text(color = "black", size = 12, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))
+f2 <- facet(f1, facet.by = c("age"), ncol = 4, scales = "free_y", panel.labs.font.y = list(size = 12, angle=0), panel.labs.font.x = list(size = 12))
+print(f2)
+
+## temporal trend by RA ----------
+
+temp1      <- aggregate(cbind(data) ~ Survey + year + age + Roundfish , FUN=sum, data=datall)
+temp2      <- aggregate(cbind(data) ~ Survey + year + age, FUN=sum, data=datall)
+temp1      <- merge(temp1, temp2, by=c("year","age", "Survey"),all.x=T)
+temp1$prop <- temp1$data.x/temp1$data.y
+temp1$age[temp1$age=="10"] <- "10+"
+temp1$age  <- paste("age ", temp1$age, sep="")
+temp1$age  <- factor(temp1$age, levels=paste("age ", c(as.character(0:9),"10+"), sep=""))
+
+f1 <- ggplot(data = temp1[temp1$Survey == "IBTSQ3",],
+         aes(x = year, y = data.x, alluvium = Roundfish)) +
+    geom_alluvium(aes(fill = Roundfish, colour = Roundfish),
+                  alpha = .75, decreasing = FALSE) +
+    scale_fill_brewer("Roundfish", palette = "Set1")+
+    scale_color_brewer("Roundfish", palette = "Set1")+
+    #ggtitle(paste(mytitle, Roundfish, sep="")) +
+    xlab("")+ ylab("Abundance") +
+    theme_bw() +
+    theme(plot.title = element_text(color="black", size=14, face="bold"), 
+          legend.position = "bottom", 
+          legend.title = element_text(colour="black", size=14, face="bold"),
+          legend.text = element_text(colour="black", size=14, face="plain"),
+          axis.text.x = element_text(color = "black", size = 12, angle = 0),
+          axis.text.y = element_text(color = "black", size = 12, angle = 0),
+          axis.title.x = element_text(color = "black", size = 12, angle = 0),
+          axis.title.y = element_text(color = "black", size = 12, angle = 90)) 
+f2 <- facet(f1, facet.by = c("age","Survey"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 12, angle=0), panel.labs.font.x = list(size = 12))
+print(f2)  
+
+
+
+temp1      <- aggregate(cbind(data) ~ Survey + year + age + Roundfish , FUN=sum, data=datall)
+temp2      <- aggregate(cbind(data) ~ Survey + year + Roundfish, FUN=sum, data=datall)
+temp1      <- merge(temp1, temp2, by=c("year","Roundfish", "Survey"),all.x=T)
+temp1$prop <- temp1$data.x/temp1$data.y
+temp1$age[temp1$age=="10"] <- "10+"
+temp1$age  <- paste("age ", temp1$age, sep="")
+temp1$age  <- factor(temp1$age, levels=paste("age ", c(as.character(0:9),"10+"), sep=""))
+temp1$Roundfish <- paste("RA ", temp1$Roundfish, sep="")
+
+f1 <- ggplot(data = temp1[temp1$Survey == "IBTSQ3",],
+         aes(x = year, y = data.x, alluvium = age)) +
+    geom_alluvium(aes(fill = age, colour = age),
+                  alpha = .75, decreasing = FALSE) +
+    scale_fill_brewer("age", palette = "Spectral")+
+    scale_color_brewer("age", palette = "Spectral")+
+    #ggtitle(paste(mytitle, Roundfish, sep="")) +
+    xlab("")+ ylab("Abundance") +
+    theme_bw() +
+    theme(plot.title = element_text(color="black", size=14, face="bold"), 
+          legend.position = "bottom", 
+          legend.title = element_text(colour="black", size=14, face="bold"),
+          legend.text = element_text(colour="black", size=14, face="plain"),
+          axis.text.x = element_text(color = "black", size = 12, angle = 0),
+          axis.text.y = element_text(color = "black", size = 12, angle = 0),
+          axis.title.x = element_text(color = "black", size = 12, angle = 0),
+          axis.title.y = element_text(color = "black", size = 12, angle = 90)) 
+f2 <- facet(f1, facet.by = c("Roundfish", "Survey"), ncol = 4, scales = "free_y", panel.labs.font.y = list(size = 12, angle=0), panel.labs.font.x = list(size = 12))
+print(f2)  
+```
+
+## (not used) compare IBTSQ3 indices
+
+```{r 051_Compare_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=T, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+## delta-gam indices was applied since WG2017
+mysurvey <- "IBTSQ3"
+indices <- collect_historical_indices(mysurvey, agesQ3, work_year)
+
+##plot: original scale
+f1 <- ggplot(indices, aes(x=year, y=indices, color=work_year)) +
+  geom_line(size=1, alpha=0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  scale_x_continuous(name="", breaks=seq(1996, work_year, 1), labels=seq(1996, work_year, 1)) +
+  ggtitle(paste(mysurvey, " indices: original scale", sep="")) +
+  theme_bw()+
+  xlab("")+ ylab("") +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "bottom", 
+        legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=15, face="plain"),
+        axis.text.x = element_text(color = "black", size = 12, angle = 90),
+        axis.text.y = element_text(color = "black", size = 12, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 12, angle=0), panel.labs.font.x = list(size = 12))
+print(f2)
+
+
+
+##plot, log scale
+f1 <- ggplot(indices, aes(x=year, y=log(indices+0.1), color=work_year)) +
+  geom_line(size=1, alpha=0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  scale_x_continuous(name="", breaks=seq(1996, work_year, 1), labels=seq(1996, work_year, 1)) +
+  ggtitle(paste(mysurvey, " indices: log scale", sep="")) +
+  theme_bw()+
+  xlab("")+ ylab("") +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "bottom", 
+        legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=15, face="plain"),
+        axis.text.x = element_text(color = "black", size = 12, angle = 90),
+        axis.text.y = element_text(color = "black", size = 12, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 12, angle=0), panel.labs.font.x = list(size = 12))
+print(f2)
+
+
+```
+
+## plot IBTSQ3
+
+```{r 05_plot_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+library(RColorBrewer)
+colset      <- brewer.pal(9, "Set1")
+#hist(discoveries,col = colset)
+colset      <- c("#000000", colset)
+## country code before WGNSSK2021
+#col_country <- c("NED", "ENG", "BEL", "GFR", "SCO", "DEN", "SWE", "NOR", "FRA")
+## country code since WGNSSK2021
+col_country <- c("NL", "GB", "BE", "DE", "GB-SCT", "DK", "SE", "NO", "FR")
+library(colorRamps)
+colset1      <- blue2red(10)
+
+mysurvey       <- "IBTSQ3"
+myage          <- agesQ3
+## load data after applying alk
+load(file=paste("Data/plaice_", mysurvey, "_", work_year, "_alk_processed.RData", sep="")) ## 
+
+myscale <- 1/10
+#myyear  <- 2010:2016
+myyear  <- (last_data_year-2):last_data_year
+mydd    <- get(paste("mydQ.", mysurvey, sep=""))
+
+###############################################################################
+##### 1. plot raw biomass per haul
+###############################################################################
+## plot biomass per haul
+
+myscale <- 1/10
+cat("  \n")
+cat(paste("##### biomass per haul: last 3 years ####  \n"))
+cat("  \n")
+for (myiyear in myyear) {
+  plot_raw_biomass_haul(mysurvey, mydd, myyear = myiyear, mypath, bycountry=TRUE, scale=myscale,myxlim=c(-3.9640, 11.6333),
+                        myylim=c(51.2000, 61.8783))
+}
+
+## make animation
+#setwd("D:/UserData/Work/0_2019_survey_index_calculation/02_script_extract_indice_delta_gam/plot_BTS_Q3/")
+#system('"D:\\software\\ImageMagick-7.0.5-Q16\\convert.exe" -delay 100 -loop 0 BTS-Q3_plot_01_haul_biomass*.png BTS-Q3_haul_biomass_all_years.gif')
+
+###############################################################################
+##### 2. plot mean length distribution
+###############################################################################
+
+cat("  \n")
+cat(paste("##### mean length per haul ####  \n"))
+cat("  \n")
+for (myiyear in myyear) {
+  plot_mean_length_haul(mysurvey, mydd, myyear = myiyear, mypath)
+}
+## make animation
+#setwd("D:/UserData/Work/0_2019_survey_index_calculation/02_script_extract_indice_delta_gam/plot_BTS_Q3/")
+#system('"D:\\software\\ImageMagick-7.0.5-Q16\\convert.exe" -delay 140 -loop 0 BTS-Q3_plot_02_haul_meanlength*.png BTS-Q3_haul_meanlength_all_years.gif')
+
+
+###############################################################################
+##### 3. plot number@age per haul
+###############################################################################
+myscale <- 1/2
+for (myiyear in myyear) {
+for (iage in as.character(myage)) {
+  plot_number_per_age_haul(mysurvey, mydd, iage=iage, myyear = myiyear, mypath, bycountry=TRUE, scale=myscale)
+}
+}
+
+
+###############################################################################
+##### 4. plot cohort spatial
+###############################################################################
+
+iage <- 5
+myscale <- 1/2
+myyear  <- (last_data_year-2):last_data_year
+plot_path  <- paste(mypath, "/plot_", mysurvey, "/", sep="")
+bycountry <- TRUE
+par(mfrow=c(1,3), mar = c(5,5,5,5), oma=c(2,2,2,2)) 
+for (i in 1:length(myyear)) {
+  iyear <- myyear[i]
+  iiage <- iage-length(myyear) + i
+  d      <- subset(mydd, Year == as.character(iyear))
+  if (iiage == "10") {
+  iiage  <- "10+"
+}
+  d[[2]]$resp.var <- d[[2]]$Nage[,iiage]
+  plot(d$lon, d$lat, type = "n", xlab = "Longitude", ylab = "Latitude", cex.axis=1.5, cex.lab=1.5, cex.main=1.5, xlim=c(-3.97, 11.6367), ylim=c(51.0107, 61.8783), main=paste(mysurvey, " ", iyear, " age ", iiage, sep=""))
+  map("worldHires", fill = TRUE, plot = TRUE, add = TRUE, col = grey(0.5))
+  country_list <- as.character(unique(d$Country))
+  match_col    <- colset[match(country_list, col_country)]
+  for (k in 1:length(country_list)) {
+      d_sub <- subset(d, Country == country_list[k])
+      d_sub = subset(d_sub, resp.var >= 1)
+      points(d_sub$lon, d_sub$lat, pch = 16, cex = myscale * sqrt(d_sub[[2]]$resp.var), col=alpha(match_col[k], 0.5))
+  }
+  #legend("bottomright", country_list, col=match_col, pch=16, pt.cex=2, cex=2)
+
+}
+
+```
+
+
+# 7. IBTSQ3 - exclude SCO from alk step
+
+## IBTSQ3 alk
+
+```{r 03_alk_BTS_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   2. alk combined              ###################################
+########################################################################
+## load processed data
+load(file=paste(mydatapath, "Data/BTS_IBTS_Q3_",work_year, "_processed_exclude_NEarea.RData", sep=""))
+
+mysurvey       <- "IBTSQ3"
+
+## exclude SCO
+table(dAll[[1]]$Country)
+table(dAll[[2]]$Country)
+#dAll[[1]] <- dAll[[1]][dAll[[1]]$Country != "GB-SCT",]
+#dAll[[2]] <- dAll[[2]][dAll[[2]]$Country != "GB-SCT",]
+#dAll[[3]] <- dAll[[3]][dAll[[3]]$Country != "GB-SCT",]
+dAll <- subset(dAll, Country != "GB-SCT")
+
+
+res            <- run_alk_BTS_IBTS("BTS+IBTSQ3")
+
+mydQ.IBTSQ3      <- res$mydd
+mydQ.IBTSQ3[[2]] <- subset(mydQ.IBTSQ3[[2]],Survey=="NS-IBTS")
+mydQ.IBTSQ3[[3]] <- subset(mydQ.IBTSQ3[[3]],Survey=="NS-IBTS")
+
+## in 2019 the grid size is 674 length(grid.IBTSQ3[[1]]), since 2020, the getGrid function is changed, so we need to increase nLon to get a similar size grid, change nLon from 40 to 48 (673 points)
+grid.IBTSQ3      <- getGrid(mydQ.IBTSQ3,nLon=48)
+length(grid.IBTSQ3[[1]])
+## save processed data: res$mydd, res$mygrid
+save(mydQ.IBTSQ3, grid.IBTSQ3, file=paste(mydatapath, "Data/plaice_", mysurvey, "_",work_year, "_alk_processed_exclude_SCO.RData", sep=""))
+## estimated number at age per haul
+#xtabs(NoAtALK ~ Year+Age,data=res$mydd[[1]])
+
+```
+
+## IBTSQ3 sweptarea
+
+```{r 03_alk_BTS, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   3. swept area              ###################################
+########################################################################
+
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_",work_year, "_alk_processed_exclude_SCO.RData", sep=""))
+
+## read swept area assessment output
+## IBTSQ3
+sw    <- read.csv("C:/Users/chen072/OneDrive - WageningenUR/0_2021_plaice_benchmark/00_Survey_indices/swept_area/IBTS_SweptAreaAssessmentOutput_2021-09-28 11_06_07.csv", stringsAsFactors = FALSE)
+myvar <- c("Survey", "Quarter", "Country", "Ship", "Gear", "StNo", "HaulNo","Year", "Month", "Day" )
+mydQ.IBTSQ3[[2]]$Quarter <- as.character(mydQ.IBTSQ3[[2]]$Quarter)
+mydQ.IBTSQ3[[2]]$Ship    <- as.character(mydQ.IBTSQ3[[2]]$Ship)
+mydQ.IBTSQ3[[2]]$Gear    <- as.character(mydQ.IBTSQ3[[2]]$Gear)
+mydQ.IBTSQ3[[2]]$Year    <- as.character(mydQ.IBTSQ3[[2]]$Year)
+nrow(mydQ.IBTSQ3[[2]])
+mydQ.IBTSQ3[[2]]         <- merge(mydQ.IBTSQ3[[2]], sw[,c(myvar, "SweptAreaWSKM2")], by=myvar, all.x=T) ## for plaice using windspred area
+nrow(mydQ.IBTSQ3[[2]])
+names(mydQ.IBTSQ3[[2]])[names(mydQ.IBTSQ3[[2]]) == "SweptAreaWSKM2"] <- "SweptArea"
+summary(mydQ.IBTSQ3[[2]]$SweptArea)
+sum(mydQ.IBTSQ3[[2]]$SweptArea==0, na.rm=T)
+mydQ.IBTSQ3[[2]]$Year[mydQ.IBTSQ3[[2]]$SweptArea==0]
+## for IBTS, 3 missing values, 59 zero values (in 1996)
+plot(mydQ.IBTSQ3[[2]]$HaulDur, mydQ.IBTSQ3[[2]]$Distance)
+plot(mydQ.IBTSQ3[[2]]$HaulDur, mydQ.IBTSQ3[[2]]$SweptArea)
+
+## save processed data: res$mydd, res$mygrid
+save(mydQ.IBTSQ3, grid.IBTSQ3, file=paste(mydatapath, "Data/plaice_", mysurvey, "_",work_year, "_alk_exclude_SCO_swept_processed_exclude_NEarea.RData", sep=""))
+
+```
+
+
+## IBTSQ3 indices
+
+```{r 04_extract_indices_IBTSQ3, echo=F, results="hide", message=FALSE, warning=FALSE, comment="", eval=F, prompt=FALSE, tidy=TRUE, tidy.opts=list(width.cutoff=60),fig.height=8, fig.width=8, fig.align="center", fig.cap="XX", fig.pos="htb!"}
+##############   3. IBTS-Q3 indices              ########################
+########################################################################
+
+mysurvey       <- "IBTSQ3"
+## load data after applying alk
+load(file=paste(mydatapath, "Data/plaice_", mysurvey, "_",work_year, "_alk_exclude_SCO_swept_processed_exclude_NEarea.RData", sep="")) ## res$mydd, res$mygrid
+
+## Make ctime : a numeric time variable 
+mydQ.IBTSQ3$ctime     <- as.numeric(as.character(mydQ.IBTSQ3$Year))
+
+
+agesQ3         <- 0:10
+## define survey year
+survey_year    <- 1996:last_data_year
+
+#######################
+## Model formulae
+#######################
+
+## use formula without gear, coz IBTS has only "GOV" gear type
+## Stationary model
+modelsStatZnoGear <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecZ[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+modelsStatPnoGear <- rep("Year+s(lon,lat,bs=c('tp'),k=kvecP[a])+s(Depth,bs='ts',k=6)+offset(log(SweptArea))",length(agesQ3))
+
+## non-Stationary model
+modelsNonStatnoGear     <- rep("Year+te(ctime,lon,lat,d=c(1,2),bs=c('cs','tp'),k=c(5,25))+s(Depth,bs='ts',k=6)+offset(log(HaulDur))",length(agesQ3))
+
+
+####################
+## IBTS-Q3   ------IBTSQ3 indices
+####################
+mc.cores        <- 1
+
+IBTSmodelsSCO  <- list()
+dd <- subset(mydQ.IBTSQ3, !is.na(SweptArea) & SweptArea!=0) ## exclude NA in sweptarea
+IBTSmodelsSCO$SI.ac <- getSurveyIdx(dd,ages=agesQ3,myids=grid.IBTSQ3[[3]],cutOff=0.15,fam="LogNormal", mc.cores=mc.cores,modelZ=modelsStatZnoGear,modelP=modelsStatPnoGear)
+
+save(IBTSmodelsSCO, mydQ.IBTSQ3, agesQ3, grid.IBTSQ3, file=paste(my_result_path, "Model_result/result_", mysurvey, "_WGNSSK_", work_year, "_stationary_exclude_SCO.RData", sep="")) 
+
+## write to dat file
+exportSI(IBTSmodelsSCO$SI.ac$idx,agesQ3,survey_year,toy=mean(mydQ.IBTSQ3[[2]]$timeOfYear,na.rm=TRUE),
+         file=paste(my_result_path, "Model_result/indices_", mysurvey,"_WGNSSK_", work_year, "_stationary_exclude_SCO.dat", sep=""),
+         nam=paste("NS Plaice ; Last age is plus group, calculated",Sys.time()))
+
+
+## save leave one country out result, alk include all countries
+load(file=paste(my_result_path, "Model_result/plaice_IBTSQ3_stationary_exclude_NEarea_leave_one_country_out.RData", sep=""))
+names(aa)
+aa <- aa[["GB-SCT"]]
+## write to dat file
+exportSI(aa$idx,agesQ3,survey_year,toy=mean(mydQ.IBTSQ3[[2]]$timeOfYear,na.rm=TRUE),
+         file=paste(my_result_path, "Model_result/indices_", mysurvey,"_WGNSSK_", work_year, "_stationary_exclude_SCO_only_delta_gam.dat", sep=""),
+         nam=paste("NS Plaice ; Last age is plus group, calculated",Sys.time()))
+
+
+
+myage <- agesQ3
+indices <- NA
+temp    <- read.table(paste(my_result_path, "Model_result/indices_", mysurvey, "_WGNSSK_2021", "_stationary_exclude_SCO.dat", sep=""), header=FALSE, skip=4)
+temp$year   <- 1996:2020
+temp$type  <- "exclude_SCO_alk_indices"
+indices        <- rbind(indices, temp)
+temp1    <- read.table(paste(my_result_path, "Model_result/indices_", mysurvey, "_WGNSSK_2021", "_stationary_exclude_SCO_only_delta_gam.dat", sep=""), header=FALSE, skip=4)
+temp1$year   <- 1996:2020
+temp1$type  <- "exclude_SCO_indices"
+indices        <- rbind(indices, temp1)
+temp1    <- read.table(paste(my_result_path, "Model_result/indices_", mysurvey, "_WGNSSK_2021", "_stationary_exclude_NEarea.dat", sep=""), header=FALSE, skip=4)
+temp1$year   <- 1996:2020
+temp1$type  <- "all"
+indices        <- rbind(indices, temp1)
+indices <- indices[-1,]
+  indices <- indices[,-1]
+  names(indices)[1:length(myage)] <- myage
+  indices$survey <- mysurvey
+  indices$method <- "delta-gam"
+
+  
+  ## reshape
+  indices <- reshape(indices, idvar = c("year","type", "survey", "method"), varying = list(1:length(myage)),
+                v.names = "indices", timevar="age",times = myage, direction = "long")
+  rownames(indices) <- c()
+##plot: original scale
+f1 <- ggplot(indices, aes(x=year, y=indices, color=type)) +
+  geom_line(size=1, alpha=0.5) +
+  scale_colour_brewer(palette = "Set1") +
+  scale_x_continuous(name="", breaks=seq(1996, work_year, 1), labels=seq(1996, work_year, 1)) +
+  ggtitle(paste(mysurvey, " indices: with and without SCO", sep="")) +
+  theme_bw()+
+  xlab("")+ ylab("") +
+  theme(plot.title = element_text(color="black", size=20, face="bold"), 
+        legend.position = "bottom", 
+        legend.title = element_text(colour="black", size=15, face="bold"),
+        legend.text = element_text(colour="black", size=15, face="plain"),
+        axis.text.x = element_text(color = "black", size = 12, angle = 90),
+        axis.text.y = element_text(color = "black", size = 12, angle = 0),
+        axis.title.x = element_text(color = "black", size = 14, angle = 0),
+        axis.title.y = element_text(color = "black", size = 14, angle = 90))
+f2 <- facet(f1, facet.by = c("age"), ncol = 2, scales = "free_y", panel.labs.font.y = list(size = 12, angle=0), panel.labs.font.x = list(size = 12))
+print(f2)
+
+```
+
+
+
+
+
