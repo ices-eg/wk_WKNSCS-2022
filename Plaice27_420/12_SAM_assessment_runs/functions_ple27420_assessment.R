@@ -114,3 +114,102 @@ extra_processing_Lowestoft_format <- function(mystock, project_path) {
   
 }
 
+## extract catchability parameter:
+extract_catchability <- function(myrun, myconf, surveys) {
+  mytable  <- as.data.frame(partable(myrun))
+  mytable1 <- mytable[grep("logFpar_", rownames(mytable)), ]
+  mytable1$survey <- NA
+  mytable1$age    <- NA
+  fleets   <- c(names(surveys))
+  mydat           <- NA
+  for (isurvey in 1:length(fleets)) {
+    myparind <- myconf$keyLogFpar[isurvey+1,][myconf$keyLogFpar[isurvey+1,]!=-1]
+    iage <- 1
+    for (ind2 in myparind){
+      temp <- NA
+      temp <- mytable1[rownames(mytable1) %in% paste0("logFpar_",ind2),]
+      temp$survey <- fleets[isurvey]
+      temp$age    <- iage
+      iage        <- iage+1
+      mydat       <- rbind(mydat, temp)
+    }
+  }
+  mydat <- mydat[-1,]
+  return(mydat)
+}
+  
+## extract obs-process variance parameter:
+extract_ob_pro_variance <- function(myrun, myconf, surveys) {
+  mytable <- as.data.frame(partable(myrun))
+  rownames(mytable)
+  names(surveys)
+  
+  mytable1 <- mytable[grep("logSdLogObs_", rownames(mytable)), ]
+  mytable1$survey <- NA
+  mytable1$age    <- NA
+  fleets <- c("catch", names(surveys))
+  mydat           <- NA
+  for (isurvey in 1:length(fleets)) {
+    myparind <- myconf$keyVarObs[isurvey,][myconf$keyVarObs[isurvey,]!=-1]
+    iage <- 1
+    for (ind2 in myparind){
+      temp <- NA
+      temp <- mytable1[rownames(mytable1) %in% paste0("logSdLogObs_",ind2),]
+      temp$survey <- fleets[isurvey]
+      temp$age    <- iage
+      iage        <- iage+1
+      mydat       <- rbind(mydat, temp)
+    }
+  }
+  mydat <- mydat[-1,]
+  
+  ## add process_N variance
+  mytable1 <- mytable[grep("logSdLogN_", rownames(mytable)), ]
+  mytable1$survey <- NA
+  mytable1$age    <- NA
+  mydat1           <- NA
+  myparind <- myconf$keyVarLogN
+  iage <- 1
+  for (ind2 in myparind){
+    temp1 <- NA
+    temp1 <- mytable1[rownames(mytable1) %in% paste0("logSdLogN_",ind2),]
+    temp1$survey <- "process_N"
+    temp1$age    <- iage
+    iage        <- iage+1
+    mydat1       <- rbind(mydat1, temp1)
+  }
+  mydat1 <- mydat1[-1,]
+  
+  mydat1 <- rbind(mydat, mydat1)
+  
+  return(mydat1)
+}
+
+## extract process_F variance parameter:
+extract_proF_variance <- function(myrun, myconf) {
+  mytable  <- as.data.frame(partable(myrun))
+  mytable1 <- mytable[grep("logSdLogFsta", rownames(mytable)), ]
+  mytable1$survey <- NA
+  mytable1$age    <- NA
+  mydat1           <- NA
+  myparind <- myconf$keyVarF[1,]
+  iage <- 1
+  for (ind2 in myparind){
+    temp1 <- NA
+    temp1 <- mytable1[rownames(mytable1) %in% paste0("logSdLogFsta_",ind2),]
+    temp1$survey <- "process_F"
+    temp1$age    <- iage
+    iage        <- iage+1
+    mydat1       <- rbind(mydat1, temp1)
+  }
+  mydat1 <- mydat1[-1,]
+  return(mydat1)
+  
+}
+
+## saveplot:
+saveplotrun <- function(mydata,mytitle, irun, mypath, mywidth=800, myeight=600){
+  png(paste0(mypath, paste0("plot_",mytitle, "_run", irun, ".png")),width = mywidth, height = myeight)
+  plot(mydata, main=paste0(mytitle, " run", irun))
+  dev.off()
+}
